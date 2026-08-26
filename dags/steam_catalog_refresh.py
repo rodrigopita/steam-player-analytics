@@ -52,4 +52,5 @@ def steam_catalog_refresh():
     details = fetch_app_details.expand(app_ids=ids)
     upsert_app_metadata(details)
 
+
 steam_catalog_refresh()
