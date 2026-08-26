@@ -1,13 +1,13 @@
-import json
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 import requests
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.sdk import dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 
-RAW_BUCKET = "steam-player-analytics-raw-rp"
+from include.object_store import player_counts_key, read_json, write_json
+
 STEAM_BASE_URL = "https://api.steampowered.com"
 TRACKED_APP_IDS = [
     730,  # CS:GO
@@ -63,21 +63,15 @@ def steam_player_snapshots_hourly():
         }
 
     @task
-    def load_to_s3(rows: list[dict], logical_date: datetime | None = None) -> str:
-        key = f"raw/player-counts/dt={logical_date:%Y-%m-%d}/{logical_date:%H}-snapshot.json"
-        S3Hook(aws_conn_id="aws_default").load_string(
-            string_data=json.dumps({"observed": list(rows)}),
-            key=key,
-            bucket_name=RAW_BUCKET,
-            replace=True,
+    def load_to_s3(rows: Sequence[dict], logical_date: datetime | None = None) -> str:
+        return write_json(
+            key=player_counts_key(logical_date),
+            payload={"observed": list(rows)},
         )
-        return key
 
     @task
     def load_raw_counts(key: str) -> int:
-        payload = json.loads(
-            S3Hook(aws_conn_id="aws_default").read_key(key=key, bucket_name=RAW_BUCKET)
-        )
+        payload = read_json(key)
         rows = [
             (obs["app_id"], obs["player_count"], obs["logical_date"], key)
             for obs in payload["observed"]
