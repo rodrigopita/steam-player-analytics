@@ -1,0 +1,22 @@
+[project]
+name = "steam-player-analytics"
+version = "0.1.0"
+description = "Steam player analytics — Airflow + dbt portfolio project"
+requires-python = "==3.14.*"
+# Runtime dependencies must be mirrored in requirements.txt, which is what the
+# Astro Runtime image actually installs; this venv exists for IDE/tests only.
+dependencies = [
+    "apache-airflow-providers-amazon==9.35.0",
+    "apache-airflow-providers-postgres==7.0.2",
+]
+
+[dependency-groups]
+dev = [
+    # Already baked into the Astro Runtime image — never add to requirements.txt.
+    "apache-airflow==3.3.1",
+    "pytest>=8",
+    "ruff>=0.9",
+]
+
+[tool.ruff]
+line-length = 100
