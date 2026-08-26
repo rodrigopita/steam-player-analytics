@@ -1,14 +1,12 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
-import requests
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.sdk import dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 
-from include.object_store import player_counts_key, read_json, write_json
+from include import object_store, steam_api
 
-STEAM_BASE_URL = "https://api.steampowered.com"
 TRACKED_APP_IDS = [
     730,  # CS:GO
     440,  # Team Fortress 2
@@ -51,27 +49,22 @@ def steam_player_snapshots_hourly():
                 f"Logical hour is {staleness} old; a snapshot now would misrepresent it. "
                 "This hour is permanently missing."
             )
-        url = f"{STEAM_BASE_URL}/ISteamUserStats/GetNumberOfCurrentPlayers/v1"
-        params = {"appid": app_id}
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
         return {
             "app_id": app_id,
-            "player_count": data.get("response", {}).get("player_count", 0),
+            "player_count": steam_api.get_player_count(app_id),
             "logical_date": logical_date.isoformat(),
         }
 
     @task
     def load_to_s3(rows: Sequence[dict], logical_date: datetime | None = None) -> str:
-        return write_json(
-            key=player_counts_key(logical_date),
+        return object_store.write_json(
+            key=object_store.player_counts_key(logical_date),
             payload={"observed": list(rows)},
         )
 
     @task
     def load_raw_counts(key: str) -> int:
-        payload = read_json(key)
+        payload = object_store.read_json(key)
         rows = [
             (obs["app_id"], obs["player_count"], obs["logical_date"], key)
             for obs in payload["observed"]
