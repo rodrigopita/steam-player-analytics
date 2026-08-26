@@ -1,0 +1,23 @@
+services:
+  warehouse:
+    image: postgres:16
+    networks:
+      - airflow
+    environment:
+      POSTGRES_USER: warehouse
+      POSTGRES_PASSWORD: warehouse
+      POSTGRES_DB: steam
+    ports:
+      # 5433 on the host so it never clashes with Astro's metadata Postgres;
+      # inside the compose network it's still warehouse:5432
+      - "5433:5432"
+    volumes:
+      - warehouse-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U warehouse -d steam"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  warehouse-data:
