@@ -1,3 +1,4 @@
+import logging
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -7,6 +8,8 @@ from airflow.sdk import dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 
 from include import object_store, steam_api
+
+logger = logging.getLogger(__name__)
 
 TRACKED_APP_IDS = [
     730,  # CS:GO
@@ -67,14 +70,16 @@ def steam_player_snapshots_hourly():
     def load_to_s3(
         rows: Sequence[dict], app_ids: Sequence[int], logical_date: datetime | None = None
     ) -> str:
+        observed = list(rows)
+        logger.info(
+            f"Bundling {len(observed)} of {len(app_ids)} tracked games for {logical_date:%Y-%m-%d %H:00}"
+        )
         return object_store.write_json(
             key=object_store.player_counts_key(logical_date),
             payload={
                 "logical_date": logical_date.isoformat(),
-                "tracked_count": len(
-                    app_ids
-                ),  # denominator: skipped fetches vanish from rows silently
-                "observed": list(rows),
+                "tracked_count": len(app_ids),
+                "observed": observed,
             },
         )
 
@@ -109,6 +114,9 @@ def steam_player_snapshots_hourly():
                 rows,
             )
             inserted = cur.rowcount
+            logger.info(
+                f"Inserted {inserted} rows from {key} ({len(rows) - inserted} already present)"
+            )
         return inserted
 
     ids = get_tracked_app_ids()
