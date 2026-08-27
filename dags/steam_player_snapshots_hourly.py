@@ -1,3 +1,4 @@
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
@@ -49,24 +50,40 @@ def steam_player_snapshots_hourly():
                 f"Logical hour is {staleness} old; a snapshot now would misrepresent it. "
                 "This hour is permanently missing."
             )
+        started = time.monotonic()
+        response = steam_api.get_player_count(app_id)
         return {
             "app_id": app_id,
-            "player_count": steam_api.get_player_count(app_id),
+            "player_count": response[
+                "player_count"
+            ],  # KeyError on a malformed response: fail and retry, never record 0
+            "api_result": response.get("result"),
             "logical_date": logical_date.isoformat(),
+            "observed_at": datetime.now(UTC).isoformat(),
+            "latency_ms": round((time.monotonic() - started) * 1000),
         }
 
     @task
-    def load_to_s3(rows: Sequence[dict], logical_date: datetime | None = None) -> str:
+    def load_to_s3(
+        rows: Sequence[dict], app_ids: Sequence[int], logical_date: datetime | None = None
+    ) -> str:
         return object_store.write_json(
             key=object_store.player_counts_key(logical_date),
-            payload={"observed": list(rows)},
+            payload={
+                "logical_date": logical_date.isoformat(),
+                "tracked_count": len(
+                    app_ids
+                ),  # denominator: skipped fetches vanish from rows silently
+                "observed": list(rows),
+            },
         )
 
     @task
     def load_raw_counts(key: str) -> int:
         payload = object_store.read_json(key)
         rows = [
-            (obs["app_id"], obs["player_count"], obs["logical_date"], key)
+            # .get for observed_at: bundles landed before the field existed load as NULL
+            (obs["app_id"], obs["player_count"], obs["logical_date"], obs.get("observed_at"), key)
             for obs in payload["observed"]
         ]
 
@@ -77,6 +94,7 @@ def steam_player_snapshots_hourly():
                     app_id        bigint      NOT NULL,
                     player_count  integer     NOT NULL,
                     logical_hour  timestamptz NOT NULL,
+                    observed_at   timestamptz,
                     s3_key        text        NOT NULL,
                     loaded_at     timestamptz NOT NULL DEFAULT now(),
                     PRIMARY KEY (app_id, logical_hour)
@@ -84,8 +102,8 @@ def steam_player_snapshots_hourly():
                 """)
             cur.executemany(
                 """
-                INSERT INTO raw_player_counts (app_id, player_count, logical_hour, s3_key)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO raw_player_counts (app_id, player_count, logical_hour, observed_at, s3_key)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (app_id, logical_hour) DO NOTHING
                 """,
                 rows,
@@ -95,7 +113,7 @@ def steam_player_snapshots_hourly():
 
     ids = get_tracked_app_ids()
     rows = fetch_player_count.expand(app_id=ids)
-    key = load_to_s3(rows)
+    key = load_to_s3(rows=rows, app_ids=ids)
     load_raw_counts(key)
 
 
