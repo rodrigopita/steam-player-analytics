@@ -154,10 +154,20 @@ def steam_catalog_refresh():
         return {"app_id": app_id, "success": True, "data": data}
 
     @task
-    def upsert_app_metadata(all_details: Sequence[dict]) -> int:
+    def upsert_app_metadata(all_details: Sequence[dict], most_played_key: str) -> int:
         results = list(all_details)
         succeeded = [r for r in results if r["success"]]
         failed_ids = [r["app_id"] for r in results if not r["success"]]
+
+        # chart presence outranks missing metadata: a region-locked game
+        # (e.g. MahjongSoul under cc=us) has no US appdetails but is alive
+        chart_ids = {e["appid"] for e in object_store.read_json(most_played_key)["most_played"]}
+        to_deactivate = [i for i in failed_ids if i not in chart_ids]
+        still_charting = [i for i in failed_ids if i in chart_ids]
+        if still_charting:
+            logger.warning(
+                f"No appdetails data but still charting - keeping active, no metadata: {still_charting}"
+            )
 
         conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
         with conn, conn.cursor() as cur:
@@ -178,13 +188,13 @@ def steam_catalog_refresh():
                 """,
                 [(r["app_id"], Jsonb(r["data"])) for r in succeeded],
             )
-            if failed_ids:
+            if to_deactivate:
                 cur.execute(
                     "UPDATE tracked_universe SET is_active = false WHERE is_active AND app_id = ANY(%s)",
-                    (failed_ids,),
+                    (to_deactivate,),
                 )
                 logger.warning(
-                    f"Deactivated {cur.rowcount} games with no appdetails data: {failed_ids}"
+                    f"Deactivated {cur.rowcount} games with no appdetails data: {to_deactivate}"
                 )
         logger.info(f"Upserted metadata for {len(succeeded)} games")
         return len(succeeded)
@@ -193,7 +203,7 @@ def steam_catalog_refresh():
     most_played_key = fetch_most_played()
     ids = filter_tracked_universe_ids(app_list_key=app_list_key, most_played_key=most_played_key)
     details = fetch_app_details.expand(app_id=ids)
-    upsert_app_metadata(details)
+    upsert_app_metadata(all_details=details, most_played_key=most_played_key)
 
 
 steam_catalog_refresh()
