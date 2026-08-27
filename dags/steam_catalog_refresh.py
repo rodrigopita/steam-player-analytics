@@ -1,10 +1,11 @@
-import requests
-from airflow.models import Variable
+import logging
+from datetime import UTC, datetime
+
 from airflow.sdk import dag, task
 
-STEAM_API_KEY = Variable.get("steam_api_key")
-STEAM_BASE_URL = "https://api.steampowered.com"
-MAX_RESULTS = 50_000
+from include import object_store, steam_api
+
+logger = logging.getLogger(__name__)
 
 
 @dag(
@@ -14,32 +15,42 @@ MAX_RESULTS = 50_000
 )
 def steam_catalog_refresh():
 
-    @task
-    def discover_apps():
-        url = f"{STEAM_BASE_URL}/IStoreService/GetAppList/v1"
-        params = {
-            "key": STEAM_API_KEY,
-            "include_games": "true",
-            "include_dlc": "false",
-            "include_software": "false",
-            "include_videos": "false",
-            "include_hardware": "false",
-            "max_results": MAX_RESULTS,
-        }
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
+    @task(retries=3, retry_exponential_backoff=True)
+    def discover_apps(logical_date: datetime | None = None) -> str:
+        logical_date = logical_date or datetime.now(UTC)
+        apps = steam_api.get_app_list()
+        logger.info(f"Discovered {len(apps)} games in the Steam catalog")
+        return object_store.write_json(
+            key=object_store.app_list_key(logical_date),
+            payload={
+                "logical_date": logical_date.isoformat(),
+                "fetched_at": datetime.now(UTC).isoformat(),
+                "app_count": len(apps),
+                "apps": apps,
+            },
+        )
 
-    @task
-    def fetch_most_played():
-        pass
+    @task(retries=3, retry_exponential_backoff=True)
+    def fetch_most_played(logical_date: datetime | None = None) -> str:
+        logical_date = logical_date or datetime.now(UTC)
+        most_played = steam_api.get_most_played()
+        logger.info(f"Fetched {len(most_played)} most played games from the Steam API")
+        return object_store.write_json(
+            key=object_store.most_played_key(logical_date),
+            payload={
+                "logical_date": logical_date.isoformat(),
+                "fetched_at": datetime.now(UTC).isoformat(),
+                "most_played_count": len(most_played),
+                "most_played": most_played,
+            },
+        )
 
     @task
     def filter_tracked_universe_ids(s3_key_1, s3_key_2):
         pass
 
     @task
-    def fetch_app_details(app_ids):
+    def fetch_app_details(app_id):
         pass
 
     @task
@@ -49,7 +60,7 @@ def steam_catalog_refresh():
     key_1 = discover_apps()
     key_2 = fetch_most_played()
     ids = filter_tracked_universe_ids(key_1, key_2)
-    details = fetch_app_details.expand(app_ids=ids)
+    details = fetch_app_details.expand(app_id=ids)
     upsert_app_metadata(details)
 
 
