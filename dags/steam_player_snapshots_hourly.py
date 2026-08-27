@@ -11,21 +11,6 @@ from include import object_store, steam_api
 
 logger = logging.getLogger(__name__)
 
-TRACKED_APP_IDS = [
-    730,  # CS:GO
-    440,  # Team Fortress 2
-    570,  # Dota 2
-    578080,  # PUBG
-    252490,  # Rust
-    304930,  # Unturned
-    3240220,  # Grand Theft Auto V
-    1174180,  # Apex Legends
-    1091500,  # Cyberpunk 2077
-    945360,  # Among Us
-    359550,  # Tom Clancy's Rainbow Six Siege
-    252950,  # Rocket League
-]
-
 
 @dag(
     schedule="@hourly",
@@ -40,10 +25,18 @@ TRACKED_APP_IDS = [
 def steam_player_snapshots_hourly():
 
     @task
-    def get_tracked_app_ids():
-        return (
-            TRACKED_APP_IDS  # cp2: replaced by SELECT app_id FROM trakced_universe WHERE is_active
-        )
+    def get_tracked_app_ids() -> list[int]:
+        conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
+        with conn, conn.cursor() as cur:
+            cur.execute("SELECT app_id FROM tracked_universe WHERE is_active ORDER BY app_id")
+            ids = [row[0] for row in cur.fetchall()]
+        if not ids:
+            # fail loud rather than fan out over nothing and land empty-but-green bundles
+            raise RuntimeError(
+                "Tracked universe is empty - run steam_catalog_refresh before this DAG"
+            )
+        logger.info(f"Snapshotting {len(ids)} tracked games")
+        return ids
 
     @task(retries=3, retry_exponential_backoff=True)
     def fetch_player_count(app_id: int, logical_date: datetime | None = None) -> dict:
