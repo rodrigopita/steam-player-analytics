@@ -27,14 +27,25 @@ def _get(url: str, params: dict) -> dict:
     return response.json()
 
 
-def get_player_count(app_id: int) -> dict:
+def get_player_count(app_id: int) -> dict | None:
     """
     Inner response for one app: {"player_count": int, "result": int},
     where result 1 means ok. Returned whole rather than unwrapped to an
     int so callers can record the result code and treat a missing
     player_count as a failure instead of a zero. No key required.
+
+    Returns None when the endpoint refuses the app with HTTP 404: some
+    games (e.g. Deadlock) do not expose public player stats at all, and
+    retrying cannot help.
     """
-    data = _get(f"{WEB_API_URL}/ISteamUserStats/GetNumberOfCurrentPlayers/v1", {"appid": app_id})
+    try:
+        data = _get(
+            f"{WEB_API_URL}/ISteamUserStats/GetNumberOfCurrentPlayers/v1", {"appid": app_id}
+        )
+    except requests.exceptions.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code == 404:
+            return None
+        raise
     return data.get("response", {})
 
 

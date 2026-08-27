@@ -48,6 +48,11 @@ def steam_player_snapshots_hourly():
             )
         started = time.monotonic()
         response = steam_api.get_player_count(app_id)
+        if response is None:
+            raise AirflowSkipException(
+                f"Steam exposes no public player stats for {app_id} (endpoint 404); "
+                "unobservable, not a failure"
+            )
         return {
             "app_id": app_id,
             "player_count": response[
@@ -59,7 +64,9 @@ def steam_player_snapshots_hourly():
             "latency_ms": round((time.monotonic() - started) * 1000),
         }
 
-    @task
+    # all_done: one unobservable or failed game must not sink the hour for the rest;
+    # the bundle's tracked_count vs observed length records exactly what was missed
+    @task(trigger_rule="all_done")
     def load_to_s3(
         rows: Sequence[dict], app_ids: Sequence[int], logical_date: datetime | None = None
     ) -> str:
