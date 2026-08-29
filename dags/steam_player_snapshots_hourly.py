@@ -28,7 +28,7 @@ def steam_player_snapshots_hourly():
     def get_tracked_app_ids() -> list[int]:
         conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
         with conn, conn.cursor() as cur:
-            cur.execute("SELECT app_id FROM tracked_universe WHERE is_active ORDER BY app_id")
+            cur.execute("SELECT app_id FROM raw.tracked_universe WHERE is_active ORDER BY app_id")
             ids = [row[0] for row in cur.fetchall()]
         if not ids:
             # fail loud rather than fan out over nothing and land empty-but-green bundles
@@ -94,20 +94,9 @@ def steam_player_snapshots_hourly():
 
         conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
         with conn, conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS raw_player_counts (
-                    app_id        bigint      NOT NULL,
-                    player_count  integer     NOT NULL,
-                    logical_hour  timestamptz NOT NULL,
-                    observed_at   timestamptz,
-                    s3_key        text        NOT NULL,
-                    loaded_at     timestamptz NOT NULL DEFAULT now(),
-                    PRIMARY KEY (app_id, logical_hour)
-                )
-                """)
             cur.executemany(
                 """
-                INSERT INTO raw_player_counts (app_id, player_count, logical_hour, observed_at, s3_key)
+                INSERT INTO raw.player_counts (app_id, player_count, logical_hour, observed_at, s3_key)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (app_id, logical_hour) DO NOTHING
                 """,

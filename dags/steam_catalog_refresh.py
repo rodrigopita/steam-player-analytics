@@ -98,18 +98,9 @@ def steam_catalog_refresh():
 
         conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
         with conn, conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS tracked_universe (
-                    app_id       bigint      PRIMARY KEY,
-                    name         text        NOT NULL,
-                    source       text        NOT NULL,
-                    tracked_from timestamptz NOT NULL DEFAULT now(),
-                    is_active    boolean     NOT NULL DEFAULT true
-                )
-                """)
             cur.executemany(
                 """
-                INSERT INTO tracked_universe (app_id, name, source)
+                INSERT INTO raw.tracked_universe (app_id, name, source)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (app_id) DO NOTHING
                 """,
@@ -120,13 +111,13 @@ def steam_catalog_refresh():
             # chart presence is evidence of life: undo a delisting-based deactivation
             chart_ids = [entry["appid"] for entry in most_played["most_played"]]
             cur.execute(
-                "UPDATE tracked_universe SET is_active = true WHERE NOT is_active AND app_id = ANY(%s)",
+                "UPDATE raw.tracked_universe SET is_active = true WHERE NOT is_active AND app_id = ANY(%s)",
                 (chart_ids,),
             )
             if cur.rowcount:
                 logger.warning(f"Reactivated {cur.rowcount} games on chart-presence evidence")
 
-            cur.execute("SELECT app_id FROM tracked_universe WHERE is_active ORDER BY app_id")
+            cur.execute("SELECT app_id FROM raw.tracked_universe WHERE is_active ORDER BY app_id")
             ids = [row[0] for row in cur.fetchall()]
 
         logger.info(f"Universe: {len(ids)} tracked games ({newly_tracked} new this run)")
@@ -171,17 +162,9 @@ def steam_catalog_refresh():
 
         conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
         with conn, conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS app_metadata (
-                    app_id          bigint      PRIMARY KEY,
-                    data            jsonb       NOT NULL,
-                    first_loaded_at timestamptz NOT NULL DEFAULT now(),
-                    updated_at      timestamptz NOT NULL DEFAULT now()
-                )
-                """)
             cur.executemany(
                 """
-                INSERT INTO app_metadata (app_id, data)
+                INSERT INTO raw.app_metadata (app_id, data)
                 VALUES (%s, %s)
                 ON CONFLICT (app_id) DO UPDATE
                     SET data = EXCLUDED.data, updated_at = now()
@@ -190,7 +173,7 @@ def steam_catalog_refresh():
             )
             if to_deactivate:
                 cur.execute(
-                    "UPDATE tracked_universe SET is_active = false WHERE is_active AND app_id = ANY(%s)",
+                    "UPDATE raw.tracked_universe SET is_active = false WHERE is_active AND app_id = ANY(%s)",
                     (to_deactivate,),
                 )
                 logger.warning(
