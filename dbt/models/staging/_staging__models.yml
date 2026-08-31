@@ -7,7 +7,10 @@ models:
       so manual-run timestamps collapse onto the hour; otherwise a passthrough.
   - name: stg_tracked_universe
     description: >
-      Passthrough of the universe registry.
+      The universe registry with columns renamed for downstream reads: name
+      becomes app_name (matching the app_metadata extraction it will coalesce
+      with in dim_game) and source becomes tracked_source. No rows filtered,
+      no values changed.
   - name: stg_app_metadata
     description: >
       Typed columns extracted from the appdetails jsonb: name, release date,
