@@ -1,0 +1,11 @@
+name: steam_player_analytics
+profile: steam_player_analytics
+
+models:
+  steam_player_analytics:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts

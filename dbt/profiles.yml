@@ -1,0 +1,12 @@
+steam_player_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      port: 5433
+      dbname: steam
+      user: warehouse
+      password: "{{ env_var('DBT_WAREHOUSE_PASSWORD', 'warehouse') }}"
+      schema: staging
+      threads: 4
