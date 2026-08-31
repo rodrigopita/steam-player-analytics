@@ -1,0 +1,33 @@
+version: 2
+
+sources:
+  - name: steam
+    schema: raw
+    description: >
+      Steam API data landed by the Airflow pipeline. Airflow owns this schema
+      and is its only writer; dbt reads it as-is. Every table can be rebuilt
+      from the raw JSON in S3.
+    tables:
+      - name: player_counts
+        description: >
+          Hourly concurrent-player snapshots: one row per observable tracked game
+          per hour. Steam cannot replay a missed hour, so gaps stay in the data.
+          logical_hour is the scheduled hour; observed_at is when the API answered.
+          Games without public player stats, like Deadlock, are tracked but never
+          appear here.
+        loaded_at_field: loaded_at
+      - name: tracked_universe
+        description: >
+          Registry of every game the pipeline has ever tracked: the accumulated
+          daily most-played top 100 plus a curated seed list. Add-never-remove,
+          SCD Type 0. Rows deactivate via is_active and only when a game has
+          missing metadata and is off the chart; chart presence alone reactivates.
+          Nothing is deleted.
+      - name: app_metadata
+        description: >
+          Current storefront appdetails per game, whole response stored as jsonb.
+          SCD Type 1: updates overwrite, so only the current state survives.
+          Fetched under cc=us and l=english, so pricing and availability describe
+          the US store only. Region-locked games like MahjongSoul have no row here
+          but stay tracked and observed.
+        loaded_at_field: updated_at

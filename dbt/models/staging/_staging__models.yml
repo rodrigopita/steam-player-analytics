@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: stg_player_counts
+    description: >
+      Player-count snapshots on a strict hourly grain. Truncates logical_hour
+      so manual-run timestamps collapse onto the hour; otherwise a passthrough.
+  - name: stg_tracked_universe
+    description: >
+      Passthrough of the universe registry.
+  - name: stg_app_metadata
+    description: >
+      Typed columns extracted from the appdetails jsonb: name, release date,
+      genres. The raw jsonb stays available upstream.
