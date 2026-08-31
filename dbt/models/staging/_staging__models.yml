@@ -13,5 +13,12 @@ models:
       no values changed.
   - name: stg_app_metadata
     description: >
-      Typed columns extracted from the appdetails jsonb: name, release date,
-      genres. The raw jsonb stays available upstream.
+      Typed columns extracted from the appdetails jsonb: the raw blob stays in
+      raw.app_metadata, and a new field is a one-line extraction added here,
+      never a jsonb read downstream. Absent values stay null, except
+      achievement_count, where an absent block means non, so 0. release_date
+      parses only the observed 'Mon DD, YYYY' shape and nulls anything else.
+      genre_names flattens the genres array to text[] in Steam's order;
+      per-genre marts unnest it, and a bridge table stays unbuilt until
+      something needs one. steam_appid and price_currency exist for
+      validation, not analytics: marts read neither.
