@@ -1,4 +1,4 @@
-vesrion: 2
+version: 2
 
 models:
   - name: dim_game
@@ -15,3 +15,19 @@ models:
         data_tests:
           - unique
           - not_null
+  - name: dim_date
+    description: >
+      Generated date spine, one row per day from the first snapshot day
+      (2026-08-26) through 2030-01-01. Covers the observation era only:
+      release dates predate the spine and use plain date arithmetic, no
+      spine rows needed. Hand-rolled with generate_series; eight attribute
+      columns did not justify a package.
+    columns:
+      - name: date_day
+        description: The calendar date, primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: day_of_week
+        description: ISO day of week, Monday=1 through Sunday=7. isweekend
+          derives from it (6 or 7).
