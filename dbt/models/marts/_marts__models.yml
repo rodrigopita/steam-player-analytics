@@ -31,3 +31,34 @@ models:
       - name: day_of_week
         description: ISO day of week, Monday=1 through Sunday=7. isweekend
           derives from it (6 or 7).
+  - name: fct_player_counts
+    description: >
+      One row per observable tracked game per hour, one measure:
+      player_count. Missed hours are absent rather than filled; gaps are
+      honest and cp4 owns detecting them. History is kept for games that
+      later deactivate, so JOINs to dim_game filter is_active as needed.
+      Lineage columns stay in staging; grain uniqueness and non-negative
+      counts are asserted by singular tests.
+    columns:
+      - name: app_id
+        description: Steam appid, FK to dim_game.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: app_id
+      - name: date_day
+        description: Calendar day of the observation, FK to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: logical_hour
+        description: The scheduled hour, UTC. With app_id, the grain.
+        data_tests:
+          - not_null
+      - name: player_count
+        description: Concurrent players Steam reported for the hour.
