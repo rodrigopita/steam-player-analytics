@@ -1,0 +1,17 @@
+vesrion: 2
+
+models:
+  - name: dim_game
+    description: >
+      One row per game ever tracked, active or not: the dimension is the
+      registry with metadata attached, SCD Type 1, current state only.
+      Metadata columns are null for games appdetails cannot describe;
+      app_name falls back from appdetails to the registry name so the key
+      columns are never null. Downstream marts filter on is_active rather
+      than expecting this table to shrink.
+    columns:
+      - name: app_id
+        description: Steam appid, the natural key. One row per app_id.
+        data_tests:
+          - unique
+          - not_null
