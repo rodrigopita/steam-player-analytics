@@ -20,9 +20,35 @@ models:
       Typed columns extracted from the appdetails jsonb: the raw blob stays in
       raw.app_metadata, and a new field is a one-line extraction added here,
       never a jsonb read downstream. Absent values stay null, except
-      achievement_count, where an absent block means non, so 0. release_date
+      achievement_count, where an absent block means none, so 0. release_date
       parses only the observed 'Mon DD, YYYY' shape and nulls anything else.
       genre_names flattens the genres array to text[] in Steam's order;
       per-genre marts unnest it, and a bridge table stays unbuilt until
-      something needs one. steam_appid and price_currency exist for
-      validation, not analytics: marts read neither.
+      something needs one.
+    columns:
+      - name: app_type
+        description: >
+          Steam's classification. The universe rule aims at games only, so
+          anything else here means the chart or seed admitted something
+          unexpected.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["game"]
+      - name: steam_appid
+        description: >
+          The appid inside the appdetails response, as opposed to app_id,
+          the appid we asked about. Steam redirects delisted and merged
+          games to other apps' metadata; a mismatch is that alarm. Equality
+          is asserted by a singular test; marts read app_id only.
+        data_tests:
+          - not_null
+      - name: price_currency
+        description: >
+          Currency of the price columns. Always USD while the cc=us pinning
+          holds; another value means the pinning broke and prices are no
+          longer comparable. Null when the game has no store price.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["USD"]
