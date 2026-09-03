@@ -62,3 +62,39 @@ models:
           - not_null
       - name: player_count
         description: Concurrent players Steam reported for the hour.
+  - name: fct_player_counts_daily
+    description: >
+      One row per tracked game per calendar day from its first observed day
+      through the latest day in fct_player_counts, a dense daily snapshot of
+      the hourly fact. Unobserved days keep a row with observed_hours = 0 and
+      null measures so downstream LAG and moving averages see the gap. Built
+      from the hourly fact, not staging, so it inherits the dedup and grain
+      test. A mart, not a metric, because nothing here re-grains at query
+      time. Grain and row consistency are asserted by singular tests.
+    columns:
+      - name: app_id
+        description: Steam appid, FK to dim_game.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: app_id
+      - name: date_day
+        description: Calendar day of the observation, FK to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: avg_player_count
+        description: Mean of the day's hourly player_count, rounded to one
+          decimal. Null when observed_hours = 0.
+      - name: peak_player_count
+        description: Highest hourly player_count of the day. Null when
+          observed_hours = 0.
+      - name: observed_hours
+        description: Completeness signal, the number of hours Steam reported
+          for the day. 0 means no data, 24 means a full day, and any other
+          value is a partial day.
