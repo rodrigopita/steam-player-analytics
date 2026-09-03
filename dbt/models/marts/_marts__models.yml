@@ -98,3 +98,62 @@ models:
         description: Completeness signal, the number of hours Steam reported
           for the day. 0 means no data, 24 means a full day, and any other
           value is a partial day.
+  - name: fct_player_trends_daily
+    description: >
+      One row per tracked game per calendar day, the daily fact carried
+      through plus window measures over it, every window partitioned by game
+      and ordered by day. The dense spine upstream is what lets ROWS frames
+      mean calendar days and LAG return null across a gap rather than skip
+      it. Grain and row consistency are asserted by singular tests.
+    columns:
+      - name: app_id
+        description: Steam appid, FK to dim_game.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: app_id
+      - name: date_day
+        description: Calendar day of the observation, FK to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: avg_player_count
+        description: Mean of the day's hourly player_count, rounded to one
+          decimal. Null when observed_hours = 0.
+      - name: peak_player_count
+        description: Highest hourly player_count of the day. Null when
+          observed_hours = 0.
+      - name: observed_hours
+        description: Completeness signal carried from the daily fact. 0 means
+          no data, 24 a full day, anything else a partial day.
+      - name: avg_player_count_prev_day
+        description: The previous calendar day's avg_player_count. Null on a
+          game's first day and when the previous day was unobserved.
+      - name: avg_player_count_change
+        description: avg_player_count minus avg_player_count_prev_day. Null
+          when either side is null.
+      - name: avg_player_count_change_rate
+        description: avg_player_count_change as a fraction of the previous
+          day, rounded to four decimals. 0.018 means up 1.8 percent. Null
+          when the change is null or the previous day was zero.
+      - name: avg_player_count_7d
+        description: Mean of avg_player_count over this day and the six
+          before it, rounded to one decimal. Unobserved days are skipped, not
+          zeroed. Null only when no day in the frame was observed.
+      - name: observed_days_7d
+        description: Observed days in the 7-day frame, 1 to 7 in practice.
+          Below 7 on a game's first six days and around gaps.
+      - name: peak_player_count_record
+        description: Highest peak_player_count from the game's first day
+          through this one, the record as of this row.
+      - name: days_since_peak
+        description: Days from last_record_day to this row. 0 on the day a
+          record is set or tied. Ties resolve to the latest day.
+      - name: last_record_day
+        description: Most recent day on or before this one whose peak equalled
+          the record. Never null, since every game's first day is observed.
