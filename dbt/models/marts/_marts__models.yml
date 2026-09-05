@@ -157,3 +157,70 @@ models:
       - name: last_record_day
         description: Most recent day on or before this one whose peak equalled
           the record. Never null, since every game's first day is observed.
+  - name: game_leaderboard
+    description: >
+      One row per active game with at least one observation, ranked by its
+      latest hourly player_count. Current means each game's own latest hour,
+      not one shared hour, so the freshness of every row is its own. No
+      day-over-day change here on purpose: the current day is partial and
+      the comparison lives on fct_player_trends_daily beside observed_hours.
+      Neither a dimension nor a fact, hence no prefix: a ranked report over
+      the other marts, the one that joins dim_game attributes. Row
+      consistency and rank contiguity are singular tests.
+    columns:
+      - name: app_id
+        description: Steam appid, FK to dim_game.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: app_id
+      - name: app_name
+        description: From dim_game; falls back to the registry name when
+          appdetails has none (MahjongSoul 1329410)
+      - name: current_rank
+        description: Dense rank by current_player_count, 1 is most played.
+          Ties share a rank.
+      - name: current_player_count
+        description: player_count at the game's latest observed hour.
+      - name: current_hour
+        description: The latest observed hour, UTC. How current "current" is
+          for this row.
+      - name: avg_player_count_current_day
+        description: avg_player_count from fct_player_counts_daily for the
+          day of current_hour. Partial until that day fills.
+      - name: peak_player_count_current_day
+        description: peak_player_count for the day of current_hour. Always
+          at least current_player_count, since the current hour is in it.
+      - name: observed_hours_current_day
+        description: Hours observed on the day of current_hour, 1 to 24. At
+          least 1 because the current hour itself is one of them.
+      - name: rank_7d
+        description: Dense rank by avg_player_count_7d. The steady rank; a
+          current_rank far above it marks a spike.
+      - name: avg_player_count_7d
+        description: Trailing 7-day average from fct_player_trends_daily,
+          ending on the day of current_hour.
+      - name: observed_days_7d
+        description: Observed days in that 7-day frame. Below 7 for games
+          tracked under a week.
+      - name: peak_player_count_record
+        description: Highest daily peak in the game's history.
+      - name: last_record_day
+        description: The day that record was set or last tied.
+      - name: days_since_peak
+        description: Days from last_record_day to the day of current_hour.
+      - name: release_date
+        description: From dim_game. Null for unreleased games.
+      - name: genre_names
+        description: From dim_game, text[]. Null for games without metadata.
+      - name: is_free
+        description: From dim_game.
+      - name: price_final_usd
+        description: From dim_game, US store price after discount. Null for
+          free or unreleased games.
+      - name: tracked_source
+        description: From dim_game, how the game entered the universe. The
+          seed-versus-chart dashboard filter.
