@@ -1,5 +1,5 @@
 # This file allows you to configure Airflow Connections, Pools, and Variables in a single place for local development only.
-# Connections and variables live in .env; this file is committed and hols only non-secret pools.
+# Connections and variables live in .env; this file is committed and holds only non-secret pools.
 
 # For more information, refer to our docs: https://www.astronomer.io/docs/astro/cli/develop-project#configure-airflow_settingsyaml-local-development-only
 # For questions, reach out to: https://support.astronomer.io

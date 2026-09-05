@@ -72,7 +72,8 @@ def steam_player_snapshots_hourly():
     ) -> str:
         observed = list(rows)
         logger.info(
-            f"Bundling {len(observed)} of {len(app_ids)} tracked games for {logical_date:%Y-%m-%d %H:00}"
+            f"Bundling {len(observed)} of {len(app_ids)} tracked games "
+            f"for {logical_date:%Y-%m-%d %H:00}"
         )
         return object_store.write_json(
             key=object_store.player_counts_key(logical_date),
@@ -96,7 +97,8 @@ def steam_player_snapshots_hourly():
         with conn, conn.cursor() as cur:
             cur.executemany(
                 """
-                INSERT INTO raw.player_counts (app_id, player_count, logical_hour, observed_at, s3_key)
+                INSERT INTO raw.player_counts
+                    (app_id, player_count, logical_hour, observed_at, s3_key)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (app_id, logical_hour) DO NOTHING
                 """,

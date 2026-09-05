@@ -111,7 +111,8 @@ def steam_catalog_refresh():
             # chart presence is evidence of life: undo a delisting-based deactivation
             chart_ids = [entry["appid"] for entry in most_played["most_played"]]
             cur.execute(
-                "UPDATE raw.tracked_universe SET is_active = true WHERE NOT is_active AND app_id = ANY(%s)",
+                "UPDATE raw.tracked_universe SET is_active = true "
+                "WHERE NOT is_active AND app_id = ANY(%s)",
                 (chart_ids,),
             )
             if cur.rowcount:
@@ -157,7 +158,8 @@ def steam_catalog_refresh():
         still_charting = [i for i in failed_ids if i in chart_ids]
         if still_charting:
             logger.warning(
-                f"No appdetails data but still charting - keeping active, no metadata: {still_charting}"
+                "No appdetails data but still charting - keeping active, no metadata: "
+                f"{still_charting}"
             )
 
         conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
@@ -173,7 +175,8 @@ def steam_catalog_refresh():
             )
             if to_deactivate:
                 cur.execute(
-                    "UPDATE raw.tracked_universe SET is_active = false WHERE is_active AND app_id = ANY(%s)",
+                    "UPDATE raw.tracked_universe SET is_active = false "
+                    "WHERE is_active AND app_id = ANY(%s)",
                     (to_deactivate,),
                 )
                 logger.warning(
