@@ -49,10 +49,17 @@ def steam_player_snapshots_hourly():
         started = time.monotonic()
         response = steam_api.get_player_count(app_id)
         if response is None:
-            raise AirflowSkipException(
+            logger.info(
                 f"Steam exposes no public player stats for {app_id} (endpoint 404); "
                 "unobservable, not a failure"
             )
+            return {
+                "app_id": app_id,
+                "logical_date": logical_date.isoformat(),
+                "observed_at": datetime.now(UTC).isoformat(),
+                "latency_ms": round((time.monotonic() - started) * 1000),
+                "status": "unobservable",
+            }
         return {
             "app_id": app_id,
             "player_count": response[
@@ -62,18 +69,25 @@ def steam_player_snapshots_hourly():
             "logical_date": logical_date.isoformat(),
             "observed_at": datetime.now(UTC).isoformat(),
             "latency_ms": round((time.monotonic() - started) * 1000),
+            "status": "observed",
         }
 
-    # all_done: one unobservable or failed game must not sink the hour for the rest;
-    # the bundle's tracked_count vs observed length records exactly what was missed
+    # all_done: one failed game must not sink the hour for the rest. Unobservable games now arrive
+    # as rows, so tracked_count minus observed minus unobservable is the count of failures.
     @task(trigger_rule="all_done")
     def load_to_s3(
         rows: Sequence[dict], app_ids: Sequence[int], logical_date: datetime | None = None
     ) -> str:
-        observed = list(rows)
+        results = list(rows)
+        observed, unobservable = [], []
+        for row in results:
+            if row["status"] == "observed":
+                observed.append(row)
+            else:
+                unobservable.append(row)
         logger.info(
-            f"Bundling {len(observed)} of {len(app_ids)} tracked games "
-            f"for {logical_date:%Y-%m-%d %H:00}"
+            f"Bundling {len(observed)} observed and {len(unobservable)} unobservable "
+            f"of {len(app_ids)} tracked games for {logical_date:%Y-%m-%d %H:00}"
         )
         return object_store.write_json(
             key=object_store.player_counts_key(logical_date),
@@ -81,6 +95,7 @@ def steam_player_snapshots_hourly():
                 "logical_date": logical_date.isoformat(),
                 "tracked_count": len(app_ids),
                 "observed": observed,
+                "unobservable": unobservable,
             },
         )
 
