@@ -29,7 +29,7 @@ models:
           - unique
           - not_null
       - name: day_of_week
-        description: ISO day of week, Monday=1 through Sunday=7. isweekend
+        description: ISO day of week, Monday=1 through Sunday=7. is_weekend
           derives from it (6 or 7).
   - name: fct_player_counts
     description: >
@@ -60,6 +60,9 @@ models:
         description: The scheduled hour, UTC. With app_id, the grain.
         data_tests:
           - not_null
+      - name: hour_of_day
+        description: Hour of logical_hour, 0 to 23 UTC. Derived for the daily
+          cycle, the time-of-day pattern the daily fact averages away.
       - name: player_count
         description: Concurrent players Steam reported for the hour.
   - name: fct_player_counts_daily
@@ -150,10 +153,12 @@ models:
           Below 7 on a game's first six days and around gaps.
       - name: peak_player_count_record
         description: Highest peak_player_count from the game's first day
-          through this one, the record as of this row.
+          since the first observation through this one, the record as of
+          this row.
       - name: days_since_peak
-        description: Days from last_record_day to this row. 0 on the day a
-          record is set or tied. Ties resolve to the latest day.
+        description: Days from last_record_day since the first observation
+          to this row. 0 on the day a record is set or tied. Ties resolve to
+          the latest day.
       - name: last_record_day
         description: Most recent day on or before this one whose peak equalled
           the record. Never null, since every game's first day is observed.
@@ -179,7 +184,7 @@ models:
                 field: app_id
       - name: app_name
         description: From dim_game; falls back to the registry name when
-          appdetails has none (MahjongSoul 1329410)
+          appdetails has none (MahjongSoul 1329410).
       - name: current_rank
         description: Dense rank by current_player_count, 1 is most played.
           Ties share a rank.
