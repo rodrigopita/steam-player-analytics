@@ -100,7 +100,7 @@ def steam_catalog_refresh():
             else:
                 unknown.append(app_id)
         if unknown:
-            logger.warning(f"Skipping {len(unknown)} appids missing from the app list: {unknown}")
+            logger.info(f"Skipping {len(unknown)} appids missing from the app list: {unknown}")
 
         conn = warehouse.connect()
         with conn, conn.cursor() as cur:
