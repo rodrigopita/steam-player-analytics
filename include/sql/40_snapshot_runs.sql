@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS raw.snapshot_runs (
     logical_hour         timestamptz NOT NULL,
     tracked_count        integer,
     observed_count       integer,
-    -- null means no bundle to read; an hour where every tracked game reported is '{}'
+    -- null means not recorded, no bundle or one older than the field; '{}' means all reported
     unobservable_app_ids bigint[],
     loaded_count         integer     NOT NULL,
     latency_p50_ms       integer,

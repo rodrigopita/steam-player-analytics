@@ -1,4 +1,5 @@
 import logging
+import statistics
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -125,10 +126,75 @@ def steam_player_snapshots_hourly():
             )
         return inserted
 
+    @task(trigger_rule="all_done")
+    def record_run(
+        key: str | None, logical_date: datetime | None = None, run_id: str | None = None
+    ) -> None:
+        tracked_count = None
+        observed_count = unobservable_app_ids = latency_p50_ms = latency_max_ms = None
+
+        if key:
+            payload = object_store.read_json(key)
+            tracked_count = payload.get("tracked_count")
+            observed = payload.get("observed")
+            unobservable = payload.get("unobservable")
+
+            observed_count = len(observed)
+            unobservable_app_ids = (
+                [row["app_id"] for row in unobservable] if unobservable is not None else None
+            )
+            latencies = [row["latency_ms"] for row in observed]
+            if latencies:
+                latency_p50_ms = round(statistics.median(latencies))
+                latency_max_ms = max(latencies)
+
+        conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM raw.player_counts WHERE logical_hour = %s", (logical_date,)
+            )
+            loaded_count = cur.fetchone()[0]
+
+            cur.execute(
+                """
+                INSERT INTO raw.snapshot_runs
+                    (run_id, logical_hour, tracked_count, observed_count, unobservable_app_ids,
+                        loaded_count, latency_p50_ms, latency_max_ms, s3_key)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (run_id) DO UPDATE SET
+                    logical_hour = EXCLUDED.logical_hour,
+                    tracked_count = EXCLUDED.tracked_count,
+                    observed_count = EXCLUDED.observed_count,
+                    unobservable_app_ids = EXCLUDED.unobservable_app_ids,
+                    loaded_count = EXCLUDED.loaded_count,
+                    latency_p50_ms = EXCLUDED.latency_p50_ms,
+                    latency_max_ms = EXCLUDED.latency_max_ms,
+                    s3_key = EXCLUDED.s3_key,
+                    recorded_at = now()
+                """,
+                (
+                    run_id,
+                    logical_date,
+                    tracked_count,
+                    observed_count,
+                    unobservable_app_ids,
+                    loaded_count,
+                    latency_p50_ms,
+                    latency_max_ms,
+                    key,
+                ),
+            )
+        unobservable_count = len(unobservable_app_ids) if unobservable_app_ids is not None else None
+        logger.info(
+            f"Recorded run {run_id}: {observed_count} observed, {unobservable_count} unobservable, "
+            f"{loaded_count} loaded of {tracked_count} tracked for {logical_date:%Y-%m-%d %H:00}"
+        )
+
     ids = get_tracked_app_ids()
     rows = fetch_player_count.expand(app_id=ids)
     key = load_to_s3(rows=rows, app_ids=ids)
-    load_raw_counts(key)
+    loaded = load_raw_counts(key)
+    loaded >> record_run(key=key)
 
 
 steam_player_snapshots_hourly()
