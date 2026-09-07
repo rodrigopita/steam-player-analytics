@@ -1,8 +1,9 @@
 import logging
 from pathlib import Path
 
-from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.sdk import dag, task
+
+from include import warehouse
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ def warehouse_bootstrap():
         if not sql_files:
             raise RuntimeError("No SQL files found in include/sql; nothing to bootstrap")
 
-        conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
+        conn = warehouse.connect()
         with conn, conn.cursor() as cur:
             for sql_file in sql_files:
                 logger.info(f"Executing {sql_file.name}")

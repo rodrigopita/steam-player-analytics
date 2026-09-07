@@ -4,11 +4,10 @@ import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
-from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.sdk import dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 
-from include import object_store, steam_api
+from include import object_store, steam_api, warehouse
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ def steam_player_snapshots_hourly():
 
     @task
     def get_tracked_app_ids() -> list[int]:
-        conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
+        conn = warehouse.connect()
         with conn, conn.cursor() as cur:
             cur.execute("SELECT app_id FROM raw.tracked_universe WHERE is_active ORDER BY app_id")
             ids = [row[0] for row in cur.fetchall()]
@@ -109,7 +108,7 @@ def steam_player_snapshots_hourly():
             for obs in payload["observed"]
         ]
 
-        conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
+        conn = warehouse.connect()
         with conn, conn.cursor() as cur:
             cur.executemany(
                 """
@@ -148,7 +147,7 @@ def steam_player_snapshots_hourly():
                 latency_p50_ms = round(statistics.median(latencies))
                 latency_max_ms = max(latencies)
 
-        conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
+        conn = warehouse.connect()
         with conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT COUNT(*) FROM raw.player_counts WHERE logical_hour = %s", (logical_date,)

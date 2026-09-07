@@ -3,11 +3,10 @@ import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.sdk import dag, task
 from psycopg.types.json import Jsonb
 
-from include import object_store, steam_api
+from include import object_store, steam_api, warehouse
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +95,7 @@ def steam_catalog_refresh():
         if unknown:
             logger.warning(f"Skipping {len(unknown)} appids missing from the app list: {unknown}")
 
-        conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
+        conn = warehouse.connect()
         with conn, conn.cursor() as cur:
             cur.executemany(
                 """
@@ -162,7 +161,7 @@ def steam_catalog_refresh():
                 f"{still_charting}"
             )
 
-        conn = PostgresHook(postgres_conn_id="warehouse").get_conn()
+        conn = warehouse.connect()
         with conn, conn.cursor() as cur:
             cur.executemany(
                 """
