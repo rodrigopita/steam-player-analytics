@@ -52,3 +52,26 @@ models:
           - accepted_values:
               arguments:
                 values: ["USD"]
+  - name: stg_snapshot_runs
+    description: >
+      One row per hourly run with the derived counts raw does not store.
+      unobservable_count is the array's cardinality and failed_count is
+      tracked_minus observed minus unobservable, both null when the array is
+      null, meaning the run recorded nothing about who was missing. The array
+      stays for step 4's known-unobservable rule. Otherwise a passthrough.
+    columns:
+      - name: run_id
+        data_tests:
+          - unique
+          - not_null
+  - name: stg_catalog_runs
+    description: >
+      One row per catalog refresh with the two list sizes derived here,
+      skipped_chart_count and no_metadata_count, null when the list is. The
+      arrays stay: the skip list is the data the playtest policy will be
+      decided from. Otherwise a passthrough.
+    columns:
+      - name: run_id
+        data_tests:
+          - unique
+          - not_null
