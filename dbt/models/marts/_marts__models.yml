@@ -162,6 +162,67 @@ models:
       - name: last_record_day
         description: Most recent day on or before this one whose peak equalled
           the record. Never null, since every game's first day is observed.
+  - name: fct_snapshot_hours
+    description: >
+      One row per hour the pipeline should have observed, from the first hour
+      in stg_player_counts to the hour of the last dbt build. Every hour is a
+      row, so a gap is a row with a status, never an absence. The latest audit
+      row per hour is joined beside a count of what the warehouse holds, and
+      status is judged from the two together. The spine ends at build time, so
+      this answers "as of the last build"; live freshness is dbt source
+      freshness on raw. Spine density and the single high-water flag are one
+      singular test, the row contract another.
+    columns:
+      - name: logical_hour
+        description: The scheduled hour, UTC. One row each, no holes.
+        data_tests:
+          - unique
+          - not_null
+      - name: status
+        description: >
+          Why the hour looks the way it does. unaudited: snapshots exist but
+          no audit row, every hour before 2026-09-07 04:00 UTC until a
+          backfill. never_ran: neither. ran_short: audited and not complete,
+          which covers failed games, a short load and a staleness skip with
+          zero observed. complete: the rest.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["unaudited", "never_ran", "ran_short", "complete"]
+      - name: has_observations
+        description: Whether stg_player_counts has at least one row for the
+          hour. The missing-hours query is WHERE NOT has_observations.
+      - name: is_high_water_mark
+        description: True on exactly one row, the latest complete hour.
+      - name: tracked_count
+        description: Active universe size at run time, from the audit row.
+          Null when unaudited or never_ran.
+      - name: observed_count
+        description: Games that reported a player count, from the audit row.
+      - name: unobservable_count
+        description: Games Steam publishes no stats for, Deadlock 1422450
+          every hour so far. Derived in staging from the id array.
+      - name: failed_count
+        description: tracked minus observed minus unobservable. Zero on every
+          complete hour by definition.
+      - name: loaded_count
+        description: Rows in raw.player_counts for the hour, counted by the
+          run when it recorded itself.
+      - name: snapshot_rows
+        description: Rows in stg_player_counts for the hour, counted at build
+          time and after dedup. Sits beside loaded_count so the two can be
+          compared; on cp1-era hours the raw count can exceed it.
+      - name: latency_p50_ms
+        description: Median Steam call latency across the observed games.
+      - name: latency_max_ms
+        description: Slowest Steam call of the hour.
+      - name: run_id
+        description: Airflow run the audit row came from. Null on unaudited
+          and never_ran hours.
+      - name: recorded_at
+        description: When the audit row was last written. Moves on a cleared
+          rerun.
   - name: game_leaderboard
     description: >
       One row per active game with at least one observation, ranked by its
