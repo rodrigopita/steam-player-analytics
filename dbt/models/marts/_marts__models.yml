@@ -182,14 +182,16 @@ models:
         description: >
           Why the hour looks the way it does. unaudited: snapshots exist but
           no audit row, every hour before 2026-09-07 04:00 UTC until a
-          backfill. never_ran: neither. ran_short: audited and not complete,
+          backfill. unrecorded: neither side has a row, whether the scheduler
+          never fired or the run could not reach the warehouse, as on
+          2026-09-09 17:00 to 00:00 UTC. ran_short: audited and not complete,
           which covers failed games, a short load and a staleness skip with
           zero observed. complete: the rest.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: ["unaudited", "never_ran", "ran_short", "complete"]
+                values: ["unaudited", "unrecorded", "ran_short", "complete"]
       - name: has_observations
         description: Whether stg_player_counts has at least one row for the
           hour. The missing-hours query is WHERE NOT has_observations.
@@ -197,7 +199,7 @@ models:
         description: True on exactly one row, the latest complete hour.
       - name: tracked_count
         description: Active universe size at run time, from the audit row.
-          Null when unaudited or never_ran.
+          Null when unaudited or unrecorded.
       - name: observed_count
         description: Games that reported a player count, from the audit row.
       - name: unobservable_count
@@ -219,7 +221,7 @@ models:
         description: Slowest Steam call of the hour.
       - name: run_id
         description: Airflow run the audit row came from. Null on unaudited
-          and never_ran hours.
+          and unrecorded hours.
       - name: recorded_at
         description: When the audit row was last written. Moves on a cleared
           rerun.

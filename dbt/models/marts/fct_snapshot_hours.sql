@@ -68,7 +68,7 @@ classified AS (
         (snapshot_rows IS NOT NULL) AS has_observations,
         CASE
             WHEN (run_id IS NULL) AND (snapshot_rows IS NOT NULL) THEN 'unaudited'
-            WHEN run_id IS NULL THEN 'never_ran'
+            WHEN run_id IS NULL THEN 'unrecorded'
             WHEN (failed_count = 0)
                 AND (loaded_count = observed_count)
                 AND (observed_count > 0)
