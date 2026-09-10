@@ -7,6 +7,6 @@ steam_player_analytics:
       port: 5433
       dbname: steam
       user: warehouse
-      password: "{{ env_var('DBT_WAREHOUSE_PASSWORD', 'warehouse') }}"
+      password: "{{ env_var('DBT_WAREHOUSE_PASSWORD', 'steamdw-local') }}"
       schema: staging
       threads: 4

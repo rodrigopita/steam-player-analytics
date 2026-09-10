@@ -5,7 +5,7 @@ services:
       - airflow
     environment:
       POSTGRES_USER: warehouse
-      POSTGRES_PASSWORD: warehouse
+      POSTGRES_PASSWORD: steamdw-local
       POSTGRES_DB: steam
     ports:
       # 5433 on the host so it never clashes with Astro's metadata Postgres;
