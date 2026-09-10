@@ -9,3 +9,6 @@ models:
     marts:
       +materialized: table
       +schema: marts
+
+vars:
+  known_unobservable_hours: 24

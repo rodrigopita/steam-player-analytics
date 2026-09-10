@@ -15,6 +15,14 @@ models:
         data_tests:
           - unique
           - not_null
+      - name: is_unobservable
+        description: >
+          True when the game was in the unobservable list of every one of the
+          last known_unobservable_hours audited hours with evidence (24, a
+          dbt var). Steam publishes no player stats for it, so it is tracked
+          but never in the fact table. Deadlock 1422450 since day one. Clears
+          on its own if the game starts reporting; a newly missing game takes
+          a day to arrive here, and the warning test covers the gap.
   - name: dim_date
     description: >
       Generated date spine, one row per day from the first snapshot day
