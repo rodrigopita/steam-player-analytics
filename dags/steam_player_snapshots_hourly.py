@@ -73,11 +73,14 @@ def steam_player_snapshots_hourly():
         }
 
     # all_done: one failed game must not sink the hour for the rest. Unobservable games now arrive
-    # as rows, so tracked_count minus observed minus unobservable is the count of failures.
+    # as rows, so tracked_count minus observed minus unobservable is the count of failures. If the
+    # universe query itself failed, app_ids is None and there is nothing to bundle: skip, not crash.
     @task(trigger_rule="all_done")
     def load_to_s3(
         rows: Sequence[dict], app_ids: Sequence[int], logical_date: datetime | None = None
     ) -> str:
+        if app_ids is None:
+            raise AirflowSkipException("Tracked universe unavailable upstream, nothing to bundle")
         results = list(rows)
         observed, unobservable = [], []
         for row in results:
