@@ -173,13 +173,14 @@ models:
   - name: fct_snapshot_hours
     description: >
       One row per hour the pipeline should have observed, from the first hour
-      in stg_player_counts to the hour of the last dbt build. Every hour is a
-      row, so a gap is a row with a status, never an absence. The latest audit
-      row per hour is joined beside a count of what the warehouse holds, and
-      status is judged from the two together. The spine ends at build time, so
-      this answers "as of the last build"; live freshness is dbt source
-      freshness on raw. Spine density and the single high-water flag are one
-      singular test, the row contract another.
+      in stg_player_counts to the current hour. Every hour is a row, so a gap
+      is a row with a status, never an absence. The latest audit row per hour
+      is joined beside a count of what the warehouse holds, and status is
+      judged from the two together. A view, unlike the other marts, so the
+      spine ends at query time and a fresh outage shows without a dbt build;
+      the inputs are three small views, so it costs nothing. Spine density
+      and the single high-water flag are one singular test, the row contract
+      another.
     columns:
       - name: logical_hour
         description: The scheduled hour, UTC. One row each, no holes.
