@@ -39,7 +39,7 @@ def steam_player_snapshots_hourly():
         return ids
 
     @task(retries=3, retry_exponential_backoff=True)
-    def fetch_player_count(app_id: int, logical_date: datetime | None = None) -> dict:
+    def fetch_player_count(app_id: int, logical_date: datetime) -> dict:
         staleness = datetime.now(UTC) - logical_date
         if staleness > timedelta(hours=2):
             raise AirflowSkipException(
@@ -77,7 +77,7 @@ def steam_player_snapshots_hourly():
     # universe query itself failed, app_ids is None and there is nothing to bundle: skip, not crash.
     @task(trigger_rule="all_done")
     def load_to_s3(
-        rows: Sequence[dict], app_ids: Sequence[int], logical_date: datetime | None = None
+        rows: Sequence[dict], app_ids: Sequence[int] | None, logical_date: datetime
     ) -> str:
         if app_ids is None:
             raise AirflowSkipException("Tracked universe unavailable upstream, nothing to bundle")
@@ -129,9 +129,7 @@ def steam_player_snapshots_hourly():
         return inserted
 
     @task(trigger_rule="all_done")
-    def record_run(
-        key: str | None, logical_date: datetime | None = None, run_id: str | None = None
-    ) -> None:
+    def record_run(key: str | None, logical_date: datetime, run_id: str) -> None:
         tracked_count = None
         observed_count = unobservable_app_ids = latency_p50_ms = latency_max_ms = None
 

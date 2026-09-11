@@ -44,8 +44,7 @@ SEED_APP_IDS = [
 def steam_catalog_refresh():
 
     @task(retries=3, retry_exponential_backoff=True)
-    def discover_apps(logical_date: datetime | None = None) -> str:
-        logical_date = logical_date or datetime.now(UTC)
+    def discover_apps(logical_date: datetime) -> str:
         apps = steam_api.get_app_list()
         logger.info(f"Discovered {len(apps)} games in the Steam catalog")
         return object_store.write_json(
@@ -59,8 +58,7 @@ def steam_catalog_refresh():
         )
 
     @task(retries=3, retry_exponential_backoff=True)
-    def fetch_most_played(logical_date: datetime | None = None) -> str:
-        logical_date = logical_date or datetime.now(UTC)
+    def fetch_most_played(logical_date: datetime) -> str:
         most_played = steam_api.get_most_played()
         logger.info(f"Fetched {len(most_played)} most played games from the Steam API")
         return object_store.write_json(
@@ -75,7 +73,7 @@ def steam_catalog_refresh():
 
     @task
     def filter_tracked_universe_ids(
-        app_list_key: str, most_played_key: str, ti: RuntimeTaskInstanceProtocol | None = None
+        app_list_key: str, most_played_key: str, ti: RuntimeTaskInstanceProtocol
     ) -> list[int]:
         app_list = object_store.read_json(app_list_key)
         most_played = object_store.read_json(most_played_key)
@@ -142,8 +140,7 @@ def steam_catalog_refresh():
         return ids
 
     @task(pool="steam_metadata", retries=3, retry_exponential_backoff=True)
-    def fetch_app_details(app_id: int, logical_date: datetime | None = None) -> dict:
-        logical_date = logical_date or datetime.now(UTC)
+    def fetch_app_details(app_id: int, logical_date: datetime) -> dict:
         started = time.monotonic()
         envelope = steam_api.get_app_details(app_id)
         object_store.write_json(
@@ -214,8 +211,8 @@ def steam_catalog_refresh():
         most_played_key: str | None,
         universe: dict | None,
         metadata: dict | None,
-        logical_date: datetime | None = None,
-        run_id: str | None = None,
+        logical_date: datetime,
+        run_id: str,
     ) -> None:
         universe = universe or {}
         metadata = metadata or {}
