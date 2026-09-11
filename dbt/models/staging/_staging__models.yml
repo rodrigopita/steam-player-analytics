@@ -56,9 +56,13 @@ models:
     description: >
       One row per hourly run with the derived counts raw does not store.
       unobservable_count is the array's cardinality and failed_count is
-      tracked_minus observed minus unobservable, both null when the array is
+      tracked minus observed minus unobservable, both null when the array is
       null, meaning the run recorded nothing about who was missing. The array
-      stays for step 4's known-unobservable rule. Otherwise a passthrough.
+      itself travels through: dim_game reads it to flag games that have been
+      unobservable for a full day. logical_hour is truncated to the hour, as
+      in stg_player_counts, because a manually triggered run carries its
+      trigger time and would otherwise never meet the hour spine. Otherwise a
+      passthrough.
     columns:
       - name: run_id
         data_tests:

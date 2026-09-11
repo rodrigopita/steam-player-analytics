@@ -7,7 +7,7 @@ source AS (
 renamed AS (
     SELECT
         run_id,
-        logical_hour,
+        DATE_TRUNC('hour', logical_hour) AS logical_hour,
         tracked_count,
         observed_count,
         unobservable_app_ids,
