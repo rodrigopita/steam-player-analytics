@@ -120,7 +120,7 @@ def steam_catalog_refresh():
                 (chart_ids,),
             )
             if reactivated_count := cur.rowcount:
-                logger.warning(f"Reactivated {reactivated_count} games on chart-presence evidence")
+                logger.info(f"Reactivated {reactivated_count} games on chart-presence evidence")
 
             cur.execute("SELECT app_id FROM raw.tracked_universe WHERE is_active ORDER BY app_id")
             ids = [row[0] for row in cur.fetchall()]
@@ -171,7 +171,7 @@ def steam_catalog_refresh():
         to_deactivate = [i for i in failed_ids if i not in chart_ids]
         still_charting = [i for i in failed_ids if i in chart_ids]
         if still_charting:
-            logger.warning(
+            logger.info(
                 "No appdetails data but still charting - keeping active, no metadata: "
                 f"{still_charting}"
             )
@@ -195,8 +195,9 @@ def steam_catalog_refresh():
                     (to_deactivate,),
                 )
                 deactivated_count = cur.rowcount
-                logger.warning(
-                    f"Deactivated {deactivated_count} games with no appdetails data: {to_deactivate}"
+                logger.info(
+                    f"Deactivated {deactivated_count} games with no appdetails data: "
+                    f"{to_deactivate}"
                 )
         logger.info(f"Upserted metadata for {len(succeeded)} games")
         return {
