@@ -58,8 +58,10 @@ sources:
           counts are transitions that leave no trace in tracked_universe, so
           they travel by XCom from the filter and upsert tasks and are null
           when that task did not run. skipped_chart_app_ids is the store
-          app-list gate's daily refusals, seed ids excluded. Same
-          newest-attempt-wins rule as snapshot_runs.
+          app-list gate's daily refusals, seed ids excluded. Newest attempt
+          wins except the three transition counts, which keep their first
+          non-null value, because a rerun finds the transitions already made
+          and would report zero.
         config:
           loaded_at_field: recorded_at
           freshness:

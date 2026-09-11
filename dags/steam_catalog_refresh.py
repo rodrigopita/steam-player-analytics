@@ -235,9 +235,15 @@ def steam_catalog_refresh():
                     app_list_count = EXCLUDED.app_list_count,
                     chart_count = EXCLUDED.chart_count,
                     skipped_chart_app_ids = EXCLUDED.skipped_chart_app_ids,
-                    newly_tracked_count = EXCLUDED.newly_tracked_count,
-                    reactivated_count = EXCLUDED.reactivated_count,
-                    deactivated_count = EXCLUDED.deactivated_count,
+                    newly_tracked_count = COALESCE(
+                        raw.catalog_runs.newly_tracked_count, EXCLUDED.newly_tracked_count
+                    ),
+                    reactivated_count = COALESCE(
+                        raw.catalog_runs.reactivated_count, EXCLUDED.reactivated_count
+                    ),
+                    deactivated_count = COALESCE(
+                        raw.catalog_runs.deactivated_count, EXCLUDED.deactivated_count
+                    ),
                     no_metadata_app_ids = EXCLUDED.no_metadata_app_ids,
                     metadata_upserted_count = EXCLUDED.metadata_upserted_count,
                     app_list_key = EXCLUDED.app_list_key,
