@@ -1,9 +1,10 @@
 """Raw-zone object store access.
 
 Every read and write of the raw zone goes through this module, so the
-storage provider, bucket name, connection id, and key layout each have
-exactly one definition. Swapping S3 for another store, or renaming the
-bucket, must never require touching a DAG file.
+storage provider, connection id, and key layout each have exactly one
+definition, and the bucket name has exactly one read: the raw_bucket
+Airflow Variable, set per deployment. Swapping S3 for another store, or
+pointing at another bucket, must never require touching a DAG file.
 """
 
 import json
@@ -11,9 +12,19 @@ from datetime import datetime
 from typing import Any
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.sdk import Variable
 
-RAW_BUCKET = "steam-player-analytics-raw-rp"
 AWS_CONN_ID = "aws_default"
+
+
+def raw_bucket() -> str:
+    """
+    Bucket name from the raw_bucket Variable (AIRFLOW_VAR_RAW_BUCKET in .env).
+    Read at call time so DAG parsing never depends on it. No default: a missing
+    value fails the first S3 call naming the variable, instead of AccessDenied
+    against a bucket that is not this deployment's.
+    """
+    return Variable.get("raw_bucket")
 
 
 def player_counts_key(logical_date: datetime) -> str:
@@ -44,11 +55,11 @@ def write_json(key: str, payload: Any) -> str:
     S3Hook(aws_conn_id=AWS_CONN_ID).load_string(
         string_data=json.dumps(payload, default=str),
         key=key,
-        bucket_name=RAW_BUCKET,
+        bucket_name=raw_bucket(),
         replace=True,
     )
     return key
 
 
 def read_json(key: str) -> Any:
-    return json.loads(S3Hook(aws_conn_id=AWS_CONN_ID).read_key(key=key, bucket_name=RAW_BUCKET))
+    return json.loads(S3Hook(aws_conn_id=AWS_CONN_ID).read_key(key=key, bucket_name=raw_bucket()))
