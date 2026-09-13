@@ -20,3 +20,7 @@ dbt/target/
 dbt/logs/
 dbt/dbt_packages/
 dbt/.user.yml
+
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/terraform.tfvars

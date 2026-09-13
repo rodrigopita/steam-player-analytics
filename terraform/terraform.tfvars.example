@@ -1,0 +1,4 @@
+bucket_name = "steam-player-analytics-raw-<your-suffix>"
+owner       = "<your-name>"
+# region      = "us-east-1"
+# environment = "prod"
