@@ -16,8 +16,6 @@ airflow.db
 **/.astro/dbt_metadata.json
 **/.astro/manifest.slim.json
 
-data-engineering-portfolio-project-1.md
-
 dbt/target/
 dbt/logs/
 dbt/dbt_packages/
