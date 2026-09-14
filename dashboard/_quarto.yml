@@ -7,3 +7,7 @@ project:
 execute:
   echo: false
   warning: false
+
+format:
+  dashboard:
+    theme: cosmo
