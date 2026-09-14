@@ -1,0 +1,23 @@
+---
+title: "Steam Player Analytics"
+format:
+  dashboard:
+    nav-buttons:
+      - icon: github
+        href: https://github.com/rodrigopita/steam-player-analytics
+---
+
+```{python}
+#| include: false
+from warehouse import q
+```
+
+# Leaderboard
+
+## Row
+
+```{python}
+#| content: valuebox
+#| title: "Games ranked"
+dict(value=int(q("select count(*) as n from marts.game_leaderboard").n[0]))
+```

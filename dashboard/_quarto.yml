@@ -1,0 +1,9 @@
+project:
+  type: default
+  output-dir: _output
+  render:
+    - index.qmd
+
+execute:
+  echo: false
+  warning: false
