@@ -24,3 +24,5 @@ dbt/.user.yml
 terraform/.terraform/
 terraform/*.tfstate*
 terraform/terraform.tfvars
+
+data/
