@@ -6,6 +6,8 @@ for pipeline state and never stand in for a series. All validated for the light
 surface with the dataviz palette validator on 2026-09-14.
 """
 
+from enum import Enum
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -22,13 +24,6 @@ CATEGORICAL = [
     "#e34948",  # 8 red
 ]
 SEQUENTIAL = "#2a78d6"
-STATUS = {
-    "complete": SEQUENTIAL,
-    "ran_short": "#fab219",
-    "unrecorded": "#d03b3b",
-    "unaudited": "#e1e0d9",
-}
-
 INK = "#0b0b0b"
 INK_MUTED = "#898781"
 GRID = "#e1e0d9"
@@ -113,14 +108,21 @@ def ranked_bars(df: pd.DataFrame, value: str, label: str) -> go.Figure:
     return fig
 
 
-STATUS_ORDER = ["complete", "ran_short", "unrecorded", "unaudited"]
-STATUS_LABEL = {
-    "complete": "Complete",
-    "ran_short": "Ran short",
-    "unrecorded": "Unrecorded",
-    "unaudited": "Unaudited",
-}
-STATUS_GLYPH = {"ran_short": "!", "unrecorded": "×"}
+class Status(Enum):
+    """Snapshot-hour statuses as fct_snapshot_hours emits them, in legend order."""
+
+    COMPLETE = ("complete", "Complete", SEQUENTIAL, "")
+    RAN_SHORT = ("ran_short", "Ran short", "#fab219", "!")
+    UNRECORDED = ("unrecorded", "Unrecorded", "#d03b3b", "×")
+    UNAUDITED = ("unaudited", "Unaudited", "#e1e0d9", "")
+
+    def __new__(cls, value: str, label: str, color: str, glyph: str):
+        member = object.__new__(cls)
+        member._value_ = value
+        member.label = label
+        member.color = color
+        member.glyph = glyph
+        return member
 
 
 def status_grid(df: pd.DataFrame) -> go.Figure:
@@ -128,15 +130,19 @@ def status_grid(df: pd.DataFrame) -> go.Figure:
 
     Expects columns day, hour, status, hover. Pivoting is the only reshaping here.
     """
+    unknown = set(df["status"]) - {s.value for s in Status}
+    if unknown:
+        raise ValueError(
+            f"fct_snapshot_hours emits statuses the dashboard does not know: {unknown}"
+        )
+    order = list(Status)
     df = df.assign(hour=df["hour"].map("{:02d}".format))
-    codes = {s: i for i, s in enumerate(STATUS_ORDER)}
+    codes = {s.value: i for i, s in enumerate(order)}
     z = df.pivot(index="day", columns="hour", values="status").map(codes.get)
     hover = df.pivot(index="day", columns="hour", values="hover")
-    n = len(STATUS_ORDER)
+    n = len(order)
     colorscale = [
-        step
-        for i, s in enumerate(STATUS_ORDER)
-        for step in ([i / n, STATUS[s]], [(i + 1) / n, STATUS[s]])
+        step for i, s in enumerate(order) for step in ([i / n, s.color], [(i + 1) / n, s.color])
     ]
     fig = go.Figure(
         go.Heatmap(
@@ -154,26 +160,27 @@ def status_grid(df: pd.DataFrame) -> go.Figure:
             hovertemplate="%{y} %{x}:00 UTC<br>%{customdata}<extra></extra>",
         )
     )
-    flagged = df[df["status"].isin(STATUS_GLYPH)]
+    glyphs = {s.value: s.glyph for s in order if s.glyph}
+    flagged = df[df["status"].isin(glyphs)]
     fig.add_trace(
         go.Scatter(
             x=flagged["hour"],
             y=flagged["day"].astype(str),
             mode="text",
-            text=flagged["status"].map(STATUS_GLYPH),
+            text=flagged["status"].map(glyphs),
             textfont={"color": "#ffffff", "size": 14},
             hoverinfo="skip",
             showlegend=False,
         )
     )
-    for s in STATUS_ORDER:
+    for s in order:
         fig.add_trace(
             go.Scatter(
                 x=[None],
                 y=[None],
                 mode="markers",
-                marker={"symbol": "square", "size": 12, "color": STATUS[s]},
-                name=STATUS_LABEL[s],
+                marker={"symbol": "square", "size": 12, "color": s.color},
+                name=s.label,
             )
         )
     fig.update_layout(
