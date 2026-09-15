@@ -23,10 +23,10 @@ CATEGORICAL = [
 ]
 SEQUENTIAL = "#2a78d6"
 STATUS = {
-    "complete": "#0ca30c",
+    "complete": SEQUENTIAL,
     "ran_short": "#fab219",
-    "unrecorder": "#d03b3b",
-    "unaudited": "#c3c2b7",
+    "unrecorded": "#d03b3b",
+    "unaudited": "#e1e0d9",
 }
 
 INK = "#0b0b0b"
@@ -60,7 +60,14 @@ pio.templates["steam"] = go.layout.Template(
             "automargin": True,
         },
         "hoverlabel": {"bgcolor": "#fcfcfb", "bordercolor": GRID, "font": {"color": INK}},
-        "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "x": 0,
+            "entrywidth": 110,
+            "entrywidthmode": "pixels",
+        },
     }
 )
 pio.templates.default = "steam"
@@ -102,5 +109,114 @@ def ranked_bars(df: pd.DataFrame, value: str, label: str) -> go.Figure:
             "showgrid": False,
             "range": [0, df[value].max() * 1.22],
         },
+    )
+    return fig
+
+
+STATUS_ORDER = ["complete", "ran_short", "unrecorded", "unaudited"]
+STATUS_LABEL = {
+    "complete": "Complete",
+    "ran_short": "Ran short",
+    "unrecorded": "Unrecorded",
+    "unaudited": "Unaudited",
+}
+STATUS_GLYPH = {"ran_short": "!", "unrecorded": "×"}
+
+
+def status_grid(df: pd.DataFrame) -> go.Figure:
+    """Day-by-hour grid of snapshot hours colored by status, with a glyph on the bad ones.
+
+    Expects columns day, hour, status, hover. Pivoting is the only reshaping here.
+    """
+    df = df.assign(hour=df["hour"].map("{:02d}".format))
+    codes = {s: i for i, s in enumerate(STATUS_ORDER)}
+    z = df.pivot(index="day", columns="hour", values="status").map(codes.get)
+    hover = df.pivot(index="day", columns="hour", values="hover")
+    n = len(STATUS_ORDER)
+    colorscale = [
+        step
+        for i, s in enumerate(STATUS_ORDER)
+        for step in ([i / n, STATUS[s]], [(i + 1) / n, STATUS[s]])
+    ]
+    fig = go.Figure(
+        go.Heatmap(
+            z=z.values,
+            x=z.columns,
+            y=z.index.astype(str),
+            customdata=hover.values,
+            zmin=0.5,
+            zmax=n - 0.5,
+            colorscale=colorscale,
+            showscale=False,
+            xgap=2,
+            ygap=2,
+            hoverongaps=False,
+            hovertemplate="%{y} %{x}:00 UTC<br>%{customdata}<extra></extra>",
+        )
+    )
+    flagged = df[df["status"].isin(STATUS_GLYPH)]
+    fig.add_trace(
+        go.Scatter(
+            x=flagged["hour"],
+            y=flagged["day"].astype(str),
+            mode="text",
+            text=flagged["status"].map(STATUS_GLYPH),
+            textfont={"color": "#ffffff", "size": 14},
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    for s in STATUS_ORDER:
+        fig.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="markers",
+                marker={"symbol": "square", "size": 12, "color": STATUS[s]},
+                name=STATUS_LABEL[s],
+            )
+        )
+    fig.update_layout(
+        xaxis={"type": "category", "title": None, "showgrid": False},
+        yaxis={"type": "category", "autorange": "reversed", "title": None, "showgrid": False},
+    )
+    return fig
+
+
+def lines(
+    df: pd.DataFrame, x: str, ys: list[str], names: list[str], log_y: bool = False
+) -> go.Figure:
+    """Up to four series of one unit on one axis, categorical hues in slot order.
+
+    log_y is for series two or more orders of magnitude apart; one axis, still.
+    """
+    fig = go.Figure()
+    for col, name, color in zip(ys, names, CATEGORICAL, strict=False):
+        fig.add_trace(
+            go.Scatter(
+                x=df[x],
+                y=df[col],
+                mode="lines",
+                name=name,
+                line={"width": 2, "color": color},
+                hovertemplate="%{y:,}<extra>" + name + "</extra>",
+            )
+        )
+    yaxis = (
+        {"title": None, "type": "log", "dtick": 1}
+        if log_y
+        else {"title": None, "rangemode": "tozero"}
+    )
+    fig.update_layout(
+        hovermode="x unified",
+        xaxis={
+            "title": None,
+            "showspikes": True,
+            "spikemode": "across",
+            "spikethickness": 1,
+            "spikecolor": BASELINE,
+            "spikedash": "solid",
+        },
+        yaxis=yaxis,
     )
     return fig
