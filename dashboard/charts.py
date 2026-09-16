@@ -183,6 +183,7 @@ def status_grid(df: pd.DataFrame) -> go.Figure:
                 name=s.label,
             )
         )
+    fig.update_layout(height=120 + 16 * len(z))
     fig.update_layout(
         xaxis={"type": "category", "title": None, "showgrid": False},
         yaxis={"type": "category", "autorange": "reversed", "title": None, "showgrid": False},
@@ -225,5 +226,120 @@ def lines(
             "spikedash": "solid",
         },
         yaxis=yaxis,
+    )
+    return fig
+
+
+def small_multiples(
+    df: pd.DataFrame,
+    x: str,
+    ys: list[str],
+    names: list[str],
+    facet: str,
+    wrap: int = 3,
+    hours: str | None = None,
+) -> go.Figure:
+    """One panel per facet value, each with the same series on its own y axis.
+
+    Facets solve the scale problem: one game ten times larger than the rest would
+    flatten every other panel on a shared axis, and a second axis is not an option.
+    """
+    keep = [x, facet] + ([hours] if hours else [])
+    long = df.melt(id_vars=keep, value_vars=ys, var_name="series", value_name="value")
+    long["series"] = long["series"].map(dict(zip(ys, names, strict=True)))
+    fig = px.line(
+        long,
+        x=x,
+        y="value",
+        color="series",
+        facet_col=facet,
+        facet_col_wrap=wrap,
+        category_orders={facet: list(df[facet].unique())},
+        color_discrete_sequence=CATEGORICAL,
+        custom_data=[hours] if hours else None,
+    )
+    hover = (
+        "%{y:,.0f}"
+        + (" over %{customdata[0]} h" if hours else "")
+        + "<extra>%{fullData.name}</extra>"
+    )
+    fig.update_traces(line={"width": 2}, hovertemplate=hover)
+    fig.update_yaxes(matches=None, title=None, rangemode="tozero", showticklabels=True)
+    fig.update_xaxes(title=None)
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=", 1)[1]))
+    fig.update_layout(
+        hovermode="x unified",
+        legend={"orientation": "h", "x": 0, "y": -0.18, "yanchor": "top", "title": {"text": ""}},
+        margin={"t": 32},
+    )
+    return fig
+
+
+def diverging_bars(df: pd.DataFrame, value: str, label: str) -> go.Figure:
+    """Horizontal bars around zero: gains in the blue pole, losses in the red pole.
+
+    Values are fractions and are labeled as percentages on a text-only trace,
+    right of the gains and left of the losses.
+    """
+    up, down = CATEGORICAL[0], CATEGORICAL[7]
+    colors = [up if v >= 0 else down for v in df[value]]
+    fig = go.Figure(
+        go.Bar(
+            x=df[value],
+            y=df[label],
+            orientation="h",
+            marker_color=colors,
+            marker_cornerradius=4,
+            marker_line_width=0,
+            hovertemplate="%{y}<br>%{x:+.1%} from the previous day<extra></extra>",
+        )
+    )
+    for side, pos in ((df[df[value] >= 0], "middle right"), (df[df[value] < 0], "middle left")):
+        pad = "\u2002"
+        fig.add_trace(
+            go.Scatter(
+                x=side[value],
+                y=side[label],
+                mode="text",
+                text=[f"{pad}{v:+.1%}{pad}" for v in side[value]],
+                textposition=pos,
+                hoverinfo="skip",
+                showlegend=False,
+                cliponaxis=False,
+            )
+        )
+    span = df[value].abs().max() * 1.6
+    fig.update_layout(
+        bargap=0.35,
+        showlegend=False,
+        yaxis={
+            "autorange": "reversed",
+            "title": None,
+            "showgrid": False,
+            "tickmode": "linear",
+            "dtick": 1,
+        },
+        xaxis={"title": None, "showticklabels": False, "showgrid": False, "range": [-span, span]},
+    )
+    return fig
+
+
+def bars(df: pd.DataFrame, x: str, y: str, unit: str) -> go.Figure:
+    """Vertical bars in one hue for a short categorical x, such as the 24 hours of a day."""
+    fig = go.Figure(
+        go.Bar(
+            x=df[x],
+            y=df[y],
+            marker_color=SEQUENTIAL,
+            marker_cornerradius=4,
+            marker_line_width=0,
+            hovertemplate="%{x}:00 UTC<br>%{y:,.0f} " + unit + "<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        bargap=0.3,
+        showlegend=False,
+        xaxis={"type": "category", "title": None, "showgrid": False},
+        yaxis={"title": None, "rangemode": "tozero"},
     )
     return fig

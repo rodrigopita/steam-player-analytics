@@ -12,3 +12,4 @@ execute:
 format:
   dashboard:
     theme: cosmo
+    scrolling: true
