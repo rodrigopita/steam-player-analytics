@@ -68,6 +68,27 @@ pio.templates["steam"] = go.layout.Template(
 pio.templates.default = "steam"
 
 
+class _NotebookRendererNoMath(pio._base_renderers.NotebookRenderer):
+    """Plotly's notebook renderer minus the MathJax loader it adds to every figure
+
+    The loader collides with the copy inside plotly.js 4 and logs an error per
+    figure on the published page; nothing on the dashboard is math.
+    """
+
+    def to_mimebundle(self, fig_dict):
+        bundle = super().to_mimebundle(fig_dict)
+        html = bundle["text/html"]
+        start = html.find('<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/')
+        if start >= 0:
+            end = html.find("</script>", start) + len("</script>")
+            bundle["text/html"] = html[:start] + html[end:]
+        return bundle
+
+
+pio.renderers["notebook_nomath"] = _NotebookRendererNoMath(connected=False)
+pio.renderers.default = "notebook_nomath"
+
+
 def ranked_bars(df: pd.DataFrame, value: str, label: str) -> go.Figure:
     """Horizontal bars for a ranking: one hue, largest on top, the value at each end.
 

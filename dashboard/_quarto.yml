@@ -13,4 +13,3 @@ format:
   dashboard:
     theme: cosmo
     scrolling: true
-    html-math-method: plain
