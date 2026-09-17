@@ -150,7 +150,7 @@ def status_grid(df: pd.DataFrame) -> go.Figure:
             x=z.columns,
             y=z.index.astype(str),
             customdata=hover.values,
-            zmin=0.5,
+            zmin=-0.5,  # codes 0..n-1 sit centered in n equal bands
             zmax=n - 0.5,
             colorscale=colorscale,
             showscale=False,
