@@ -1,0 +1,86 @@
+# Leaderboard
+
+## Row
+
+```{python}
+#| content: valuebox
+#| title: "Games ranked"
+{"value": int(q("select count(*) as n from marts.game_leaderboard").n[0])}
+```
+
+```{python}
+#| content: valuebox
+#| title: "Players at the latest hour"
+players = q("""
+  select sum(current_player_count) as n
+  from marts.game_leaderboard
+  where current_hour = (select max(current_hour) from marts.game_leaderboard)
+""").n[0]
+{"icon": "people", "value": f"{int(players):,}"}
+```
+
+```{python}
+#| content: valuebox
+latest = q("select max(current_hour) as h from marts.game_leaderboard").h[0]
+```
+
+::: {.valuebox icon="clock" color="dark"}
+Latest observed hour, `{python} f"{latest:%Y-%m-%d}"` UTC
+
+`{python} f"{latest:%H:%M}"`
+:::
+
+```{python}
+#| content: valuebox
+#| title: "Games behind the latest hour"
+stale = int(q("""
+  select count(*) as n
+  from marts.game_leaderboard
+  where current_hour < (select max(current_hour) from marts.game_leaderboard)
+""").n[0])
+{"icon": "hourglass-split", "value": stale, "color": "warning" if stale else "light"}
+```
+
+## Row
+
+### Column {width=45%}
+
+```{python}
+#| title: "Top 15 by current players"
+ranked_bars(
+  q("""
+    select app_name, current_player_count
+    from marts.game_leaderboard
+    order by current_rank
+    limit 15
+  """),
+  value="current_player_count",
+  label="app_name",
+)
+```
+
+### Column
+
+```{python}
+#| title: "Every tracked game"
+table = q("""
+  select
+    current_rank as "Rank",
+    app_name as "Game",
+    current_player_count as "Players now",
+    round(avg_player_count_7d) as "7-day avg",
+    rank_7d as "7-day rank",
+    peak_player_count_record as "Record peak",
+    days_since_peak as "Days since peak",
+    to_char(current_hour at time zone 'utc', 'YYYY-MM-DD HH24:00') as "Latest hour (UTC)"
+  from marts.game_leaderboard
+  order by current_rank
+""")
+HTML(
+  '<div style="max-height: 460px; overflow: auto">'
+  + table.style.hide(axis="index").format(thousands=",", precision=0).to_html()
+  + "</div>"
+)
+```
+
+{{< include _footer.qmd >}}

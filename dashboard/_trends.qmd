@@ -1,0 +1,103 @@
+# Trends
+
+```{python}
+#| include: false
+days = q("""
+  select 
+    max(date_day) as last_day,
+    max(date_day) filter (
+      where date_day < (select max(date_day) from marts.fct_player_trends_daily)
+    ) as latest_day
+  from marts.fct_player_trends_daily
+""")
+last_day, latest_day = days.last_day[0], days.latest_day[0]
+```
+
+## Row
+
+```{python}
+#| title: "Daily average players, top six games by 7-day average, with the 7-day average"
+small_multiples(
+  q("""
+    select t.date_day, g.app_name, t.avg_player_count, t.avg_player_count_7d, t.observed_hours
+    from marts.fct_player_trends_daily t
+    join marts.game_leaderboard g using (app_id)
+    where g.rank_7d <= 6
+      and t.date_day < (select max(date_day) from marts.fct_player_trends_daily)
+    order by g.rank_7d, t.date_day
+  """),
+  x="date_day",
+  ys=["avg_player_count", "avg_player_count_7d"],
+  names=["Daily average", "7-day average"],
+  facet="app_name",
+  hours="observed_hours",
+)
+```
+
+## Row
+
+### Column
+
+```{python}
+#| title: "Biggest moves from the previous day"
+moves = q(f"""
+  (
+    select g.app_name, t.avg_player_count_change_rate as change_rate
+    from marts.fct_player_trends_daily t
+    join marts.dim_game g using (app_id)
+    where t.date_day = '{latest_day}' and t.avg_player_count_change_rate is not null
+    order by t.avg_player_count_change_rate desc
+    limit 6
+  )
+  union all
+  (
+    select g.app_name, t.avg_player_count_change_rate
+    from marts.fct_player_trends_daily t
+    join marts.dim_game g using (app_id)
+    where t.date_day = '{latest_day}' and t.avg_player_count_change_rate is not null
+    order by t.avg_player_count_change_rate asc
+    limit 6
+  )
+  order by change_rate desc
+""")
+diverging_bars(moves, value="change_rate", label="app_name")
+```
+
+::: {.card fill="false"}
+Moves compare `{python} f"{latest_day:%Y-%m-%d}"` with the day before;
+`{python} f"{last_day:%Y-%m-%d}"` is still in progress and left out. Hover shows each day's
+observed hours.
+:::
+
+### Column
+
+```{python}
+#| title: "Players across all tracked games by hour of day, last seven complete days (UTC)"
+bars(
+  q("""
+    with days as (
+      select date_day
+      from marts.fct_player_counts_daily
+      group by date_day
+      having max(observed_hours) = 24
+      order by date_day desc
+      limit 7
+    ),
+    totals as (
+      select c.logical_hour, c.hour_of_day, sum(c.player_count) as players
+      from marts.fct_player_counts c
+      join days using (date_day)
+      group by 1, 2
+    )
+    select hour_of_day, avg(players) as players
+    from totals
+    group by hour_of_day
+    order by hour_of_day
+  """),
+  x="hour_of_day",
+  y="players",
+  unit="players",
+)
+```
+
+{{< include _footer.qmd >}}

@@ -1,0 +1,87 @@
+# Pipeline
+
+```{python}
+#| include: false
+by_status = q("select status, count(*) as n from marts.fct_snapshot_hours group by status")
+by_status = dict(zip(by_status.status, by_status.n, strict=True))
+hwm = q("select logical_hour as h from marts.fct_snapshot_hours where is_high_water_mark").h[0]
+unobservable = int(q("select count(*) as n from marts.dim_game where is_unobservable").n[0])
+```
+
+## Row
+
+::: {.valuebox icon="flag" color="dark"}
+High-water mark, `{python} f"{hwm:%Y-%m-%d}"` UTC
+
+`{python} f"{hwm:%H:%M}"`
+:::
+
+```{python}
+#| content: valuebox
+#| title: "Hours complete"
+{"icon": "check-circle", "value": int(by_status.get("complete", 0))}
+```
+
+```{python}
+#| content: valuebox
+#| title: "Hours the warehouse heard nothing"
+unrecorded = int(by_status.get("unrecorded", 0))
+{"icon": "x-circle", "value": unrecorded, "color": "danger" if unrecorded else "light"}
+```
+
+```{python}
+#| content: valuebox
+#| title: "Games Steam publishes no count for"
+{"icon": "eye-slash", "value": unobservable}
+```
+
+## Row
+
+```{python}
+#| title: "Every hour since the first observation, by status (UTC)"
+status_grid(
+  q("""
+    select
+      (logical_hour at time zone 'utc')::date as day,
+      extract(hour from logical_hour at time zone 'utc')::int as hour,
+      status,
+      status || coalesce(
+        ': ' || observed_count || ' of ' || tracked_count || ' observed', ''
+      ) as hover
+    from marts.fct_snapshot_hours
+  """)
+)
+```
+
+## Row
+
+### Column
+
+```{python}
+#| title: "Games observed per hour"
+lines(
+  q("""
+    select logical_hour, snapshot_rows
+    from marts.fct_snapshot_hours
+    order by 1
+  """),
+  x="logical_hour",
+  ys=["snapshot_rows"],
+  names=["Games"],
+)
+```
+
+### Column
+
+```{python}
+#| title: "Steam call latency per hour, milliseconds log scale"
+lines(
+  q("select logical_hour, latency_p50_ms, latency_max_ms from marts.fct_snapshot_hours order by 1"),
+  x="logical_hour",
+  ys=["latency_p50_ms", "latency_max_ms"],
+  names=["Median", "Max"],
+  log_y=True,
+)
+```
+
+{{< include _footer.qmd >}}
