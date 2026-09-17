@@ -1,0 +1,81 @@
+version: 2
+
+models:
+  - name: stg_player_counts
+    description: >
+      Player-count snapshots on a strict hourly grain, enforced in two steps:
+      logical_hour truncates to the hour so manual-run timestamps collapse
+      onto it, and when that folds several observations into one game-hour,
+      row_number keeps the one closest to the top of the hour (the scheduled
+      row when it exists). Raw keeps every observation; this view keeps one
+      per game-hour. Otherwise a passthrough.
+  - name: stg_tracked_universe
+    description: >
+      The universe registry with columns renamed for downstream reads: name
+      becomes app_name (matching the app_metadata extraction it will coalesce
+      with in dim_game) and source becomes tracked_source. No rows filtered,
+      no values changed.
+  - name: stg_app_metadata
+    description: >
+      Typed columns extracted from the appdetails jsonb: the raw blob stays in
+      raw.app_metadata, and a new field is a one-line extraction added here,
+      never a jsonb read downstream. Absent values stay null, except
+      achievement_count, where an absent block means none, so 0. release_date
+      parses only the observed 'Mon DD, YYYY' shape and nulls anything else.
+      genre_names flattens the genres array to text[] in Steam's order;
+      per-genre marts unnest it, and a bridge table stays unbuilt until
+      something needs one.
+    columns:
+      - name: app_type
+        description: >
+          Steam's classification. The universe rule aims at games only, so
+          anything else here means the chart or seed admitted something
+          unexpected.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["game"]
+      - name: steam_appid
+        description: >
+          The appid inside the appdetails response, as opposed to app_id,
+          the appid we asked about. Steam redirects delisted and merged
+          games to other apps' metadata; a mismatch is that alarm. Equality
+          is asserted by a singular test; marts read app_id only.
+        data_tests:
+          - not_null
+      - name: price_currency
+        description: >
+          Currency of the price columns. Always USD while the cc=us pinning
+          holds; another value means the pinning broke and prices are no
+          longer comparable. Null when the game has no store price.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["USD"]
+  - name: stg_snapshot_runs
+    description: >
+      One row per hourly run with the derived counts raw does not store.
+      unobservable_count is the array's cardinality and failed_count is
+      tracked minus observed minus unobservable, both null when the array is
+      null, meaning the run recorded nothing about who was missing. The array
+      itself travels through: dim_game reads it to flag games that have been
+      unobservable for a full day. logical_hour is truncated to the hour, as
+      in stg_player_counts, because a manually triggered run carries its
+      trigger time and would otherwise never meet the hour spine. Otherwise a
+      passthrough.
+    columns:
+      - name: run_id
+        data_tests:
+          - unique
+          - not_null
+  - name: stg_catalog_runs
+    description: >
+      One row per catalog refresh with the two list sizes derived here,
+      skipped_chart_count and no_metadata_count, null when the list is. The
+      arrays stay: the skip list is the data the playtest policy will be
+      decided from. Otherwise a passthrough.
+    columns:
+      - name: run_id
+        data_tests:
+          - unique
+          - not_null

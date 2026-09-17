@@ -1,0 +1,305 @@
+version: 2
+
+models:
+  - name: dim_game
+    description: >
+      One row per game ever tracked, active or not: the dimension is the
+      registry with metadata attached, SCD Type 1, current state only.
+      Metadata columns are null for games appdetails cannot describe;
+      app_name falls back from appdetails to the registry name so the key
+      columns are never null. Downstream marts filter on is_active rather
+      than expecting this table to shrink.
+    columns:
+      - name: app_id
+        description: Steam appid, the natural key. One row per app_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: is_unobservable
+        description: >
+          True when the game was in the unobservable list of every one of the
+          last known_unobservable_hours audited hours with evidence (24, a
+          dbt var): a bundle and at least one observation, since an hour that
+          observed nothing says nothing about who is unobservable. Steam 
+          publishes no player stats for it, so it is tracked but never in the
+          fact table. Deadlock 1422450 since day one. Clears on its own if the
+          game starts reporting; a newly missing game takes a day to arrive
+          here,and the warning test covers the gap.
+  - name: dim_date
+    description: >
+      Generated date spine, one row per day from the first snapshot day
+      (2026-08-26) through 2030-01-01. Covers the observation era only:
+      release dates predate the spine and use plain date arithmetic, no
+      spine rows needed. Hand-rolled with generate_series; eight attribute
+      columns did not justify a package.
+    columns:
+      - name: date_day
+        description: The calendar date, primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: day_of_week
+        description: ISO day of week, Monday=1 through Sunday=7. is_weekend
+          derives from it (6 or 7).
+  - name: fct_player_counts
+    description: >
+      One row per observable tracked game per hour, one measure:
+      player_count. Missed hours are absent rather than filled; gaps are
+      honest and cp4 owns detecting them. History is kept for games that
+      later deactivate, so JOINs to dim_game filter is_active as needed.
+      Lineage columns stay in staging; grain uniqueness and non-negative
+      counts are asserted by singular tests.
+    columns:
+      - name: app_id
+        description: Steam appid, FK to dim_game.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: app_id
+      - name: date_day
+        description: Calendar day of the observation, FK to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: logical_hour
+        description: The scheduled hour, UTC. With app_id, the grain.
+        data_tests:
+          - not_null
+      - name: hour_of_day
+        description: Hour of logical_hour, 0 to 23 UTC. Derived for the daily
+          cycle, the time-of-day pattern the daily fact averages away.
+      - name: player_count
+        description: Concurrent players Steam reported for the hour.
+  - name: fct_player_counts_daily
+    description: >
+      One row per tracked game per calendar day from its first observed day
+      through the latest day in fct_player_counts, a dense daily snapshot of
+      the hourly fact. Unobserved days keep a row with observed_hours = 0 and
+      null measures so downstream LAG and moving averages see the gap. Built
+      from the hourly fact, not staging, so it inherits the dedup and grain
+      test. A mart, not a metric, because nothing here re-grains at query
+      time. Grain and row consistency are asserted by singular tests.
+    columns:
+      - name: app_id
+        description: Steam appid, FK to dim_game.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: app_id
+      - name: date_day
+        description: Calendar day of the observation, FK to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: avg_player_count
+        description: Mean of the day's hourly player_count, rounded to one
+          decimal. Null when observed_hours = 0.
+      - name: peak_player_count
+        description: Highest hourly player_count of the day. Null when
+          observed_hours = 0.
+      - name: observed_hours
+        description: Completeness signal, the number of hours Steam reported
+          for the day. 0 means no data, 24 means a full day, and any other
+          value is a partial day.
+  - name: fct_player_trends_daily
+    description: >
+      One row per tracked game per calendar day, the daily fact carried
+      through plus window measures over it, every window partitioned by game
+      and ordered by day. The dense spine upstream is what lets ROWS frames
+      mean calendar days and LAG return null across a gap rather than skip
+      it. Grain and row consistency are asserted by singular tests.
+    columns:
+      - name: app_id
+        description: Steam appid, FK to dim_game.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: app_id
+      - name: date_day
+        description: Calendar day of the observation, FK to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: avg_player_count
+        description: Mean of the day's hourly player_count, rounded to one
+          decimal. Null when observed_hours = 0.
+      - name: peak_player_count
+        description: Highest hourly player_count of the day. Null when
+          observed_hours = 0.
+      - name: observed_hours
+        description: Completeness signal carried from the daily fact. 0 means
+          no data, 24 a full day, anything else a partial day.
+      - name: avg_player_count_prev_day
+        description: The previous calendar day's avg_player_count. Null on a
+          game's first day and when the previous day was unobserved.
+      - name: avg_player_count_change
+        description: avg_player_count minus avg_player_count_prev_day. Null
+          when either side is null.
+      - name: avg_player_count_change_rate
+        description: avg_player_count_change as a fraction of the previous
+          day, rounded to four decimals. 0.018 means up 1.8 percent. Null
+          when the change is null or the previous day was zero.
+      - name: avg_player_count_7d
+        description: Mean of avg_player_count over this day and the six
+          before it, rounded to one decimal. Unobserved days are skipped, not
+          zeroed. Null only when no day in the frame was observed.
+      - name: observed_days_7d
+        description: Observed days in the 7-day frame, 1 to 7 in practice.
+          Below 7 on a game's first six days and around gaps.
+      - name: peak_player_count_record
+        description: Highest peak_player_count from the game's first day
+          since the first observation through this one, the record as of
+          this row.
+      - name: days_since_peak
+        description: Days from last_record_day since the first observation
+          to this row. 0 on the day a record is set or tied. Ties resolve to
+          the latest day.
+      - name: last_record_day
+        description: Most recent day on or before this one whose peak equalled
+          the record. Never null, since every game's first day is observed.
+  - name: fct_snapshot_hours
+    description: >
+      One row per hour the pipeline should have observed, from the first hour
+      in stg_player_counts to the current hour. Every hour is a row, so a gap
+      is a row with a status, never an absence. The latest audit row per hour
+      is joined beside a count of what the warehouse holds, and status is
+      judged from the two together. A view, unlike the other marts, so the
+      spine ends at query time and a fresh outage shows without a dbt build;
+      the inputs are three small views, so it costs nothing. Spine density
+      and the single high-water flag are one singular test, the row contract
+      another.
+    columns:
+      - name: logical_hour
+        description: The scheduled hour, UTC. One row each, no holes.
+        data_tests:
+          - unique
+          - not_null
+      - name: status
+        description: >
+          Why the hour looks the way it does. unaudited: snapshots exist but
+          no audit row, every hour before 2026-09-07 04:00 UTC until a
+          backfill. unrecorded: neither side has a row, whether the scheduler
+          never fired or the run could not reach the warehouse, as on
+          2026-09-09 17:00 to 00:00 UTC. ran_short: audited and not complete,
+          which covers failed games, a short load and a staleness skip with
+          zero observed. complete: the rest.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["unaudited", "unrecorded", "ran_short", "complete"]
+      - name: has_observations
+        description: Whether stg_player_counts has at least one row for the
+          hour. The missing-hours query is WHERE NOT has_observations.
+      - name: is_high_water_mark
+        description: True on exactly one row, the latest complete hour.
+      - name: tracked_count
+        description: Active universe size at run time, from the audit row.
+          Null when unaudited or unrecorded.
+      - name: observed_count
+        description: Games that reported a player count, from the audit row.
+      - name: unobservable_count
+        description: Games Steam publishes no stats for, Deadlock 1422450
+          every hour so far. Derived in staging from the id array.
+      - name: failed_count
+        description: tracked minus observed minus unobservable. Zero on every
+          complete hour by definition.
+      - name: loaded_count
+        description: Rows in raw.player_counts for the hour, counted by the
+          run when it recorded itself.
+      - name: snapshot_rows
+        description: Rows in stg_player_counts for the hour, counted at build
+          time and after dedup. Sits beside loaded_count so the two can be
+          compared; on cp1-era hours the raw count can exceed it.
+      - name: latency_p50_ms
+        description: Median Steam call latency across the observed games.
+      - name: latency_max_ms
+        description: Slowest Steam call of the hour.
+      - name: run_id
+        description: Airflow run the audit row came from. Null on unaudited
+          and unrecorded hours.
+      - name: recorded_at
+        description: When the audit row was last written. Moves on a cleared
+          rerun.
+  - name: game_leaderboard
+    description: >
+      One row per active game with at least one observation, ranked by its
+      latest hourly player_count. Current means each game's own latest hour,
+      not one shared hour, so the freshness of every row is its own. No
+      day-over-day change here on purpose: the current day is partial and
+      the comparison lives on fct_player_trends_daily beside observed_hours.
+      Neither a dimension nor a fact, hence no prefix: a ranked report over
+      the other marts, the one that joins dim_game attributes. Row
+      consistency and rank contiguity are singular tests.
+    columns:
+      - name: app_id
+        description: Steam appid, FK to dim_game.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: app_id
+      - name: app_name
+        description: From dim_game; falls back to the registry name when
+          appdetails has none (MahjongSoul 1329410).
+      - name: current_rank
+        description: Dense rank by current_player_count, 1 is most played.
+          Ties share a rank.
+      - name: current_player_count
+        description: player_count at the game's latest observed hour.
+      - name: current_hour
+        description: The latest observed hour, UTC. How current "current" is
+          for this row.
+      - name: avg_player_count_current_day
+        description: avg_player_count from fct_player_counts_daily for the
+          day of current_hour. Partial until that day fills.
+      - name: peak_player_count_current_day
+        description: peak_player_count for the day of current_hour. Always
+          at least current_player_count, since the current hour is in it.
+      - name: observed_hours_current_day
+        description: Hours observed on the day of current_hour, 1 to 24. At
+          least 1 because the current hour itself is one of them.
+      - name: rank_7d
+        description: Dense rank by avg_player_count_7d. The steady rank; a
+          current_rank far above it marks a spike.
+      - name: avg_player_count_7d
+        description: Trailing 7-day average from fct_player_trends_daily,
+          ending on the day of current_hour.
+      - name: observed_days_7d
+        description: Observed days in that 7-day frame. Below 7 for games
+          tracked under a week.
+      - name: peak_player_count_record
+        description: Highest daily peak in the game's history.
+      - name: last_record_day
+        description: The day that record was set or last tied.
+      - name: days_since_peak
+        description: Days from last_record_day to the day of current_hour.
+      - name: release_date
+        description: From dim_game. Null for unreleased games.
+      - name: genre_names
+        description: From dim_game, text[]. Null for games without metadata.
+      - name: is_free
+        description: From dim_game.
+      - name: price_final_usd
+        description: From dim_game, US store price after discount. Null for
+          free or unreleased games.
+      - name: tracked_source
+        description: From dim_game, how the game entered the universe. The
+          seed-versus-chart dashboard filter.

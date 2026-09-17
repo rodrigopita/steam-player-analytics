@@ -1,0 +1,68 @@
+version: 2
+
+sources:
+  - name: steam
+    schema: raw
+    description: >
+      Steam API data landed by the Airflow pipeline, plus the pipeline's own
+      run records. Airflow owns this schema and is its only writer; dbt reads
+      it as-is. Every table can be rebuilt from the raw JSON in S3 except
+      catalog_runs, whose universe transitions exist only inside the run.
+    tables:
+      - name: player_counts
+        description: >
+          Hourly concurrent-player snapshots: one row per observable tracked game
+          per hour. Steam cannot replay a missed hour, so gaps stay in the data.
+          logical_hour is the scheduled hour; observed_at is when the API answered.
+          Games without public player stats, like Deadlock, are tracked but never
+          appear here.
+        config:
+          loaded_at_field: loaded_at
+          freshness:
+            warn_after: { count: 2, period: hour }
+      - name: tracked_universe
+        description: >
+          Registry of every game the pipeline has ever tracked: the accumulated
+          daily most-played top 100 plus a curated seed list. Add-never-remove,
+          SCD Type 0. Rows deactivate via is_active and only when a game has
+          missing metadata and is off the chart; chart presence alone reactivates.
+          Nothing is deleted.
+      - name: app_metadata
+        description: >
+          Current storefront appdetails per game, whole response stored as jsonb.
+          SCD Type 1: updates overwrite, so only the current state survives.
+          Fetched under cc=us and l=english, so pricing and availability describe
+          the US store only. Region-locked games like MahjongSoul have no row here
+          but stay tracked and observed.
+        config:
+          loaded_at_field: updated_at
+          freshness:
+            warn_after: { count: 26, period: hour }
+      - name: snapshot_runs
+        description: >
+          One row per hourly snapshot run, written last on all_done so a run
+          that died still gets a row. Identity and loaded_count are never null;
+          everything read from the S3 bundle is null when no bundle landed.
+          loaded_count is counted from player_counts at record time, not taken
+          from the load task. unobservable_app_ids is null when not recorded
+          and an empty array when every game reported. The one raw table where
+          the newest attempt wins: a cleared rerun keeps its run_id and
+          rewrites the row.
+        config:
+          loaded_at_field: recorded_at
+          freshness:
+            warn_after: { count: 2, period: hour }
+      - name: catalog_runs
+        description: >
+          One row per daily catalog refresh, written last on all_done. The
+          counts are transitions that leave no trace in tracked_universe, so
+          they travel by XCom from the filter and upsert tasks and are null
+          when that task did not run. skipped_chart_app_ids is the store
+          app-list gate's daily refusals, seed ids excluded. Newest attempt
+          wins except the three transition counts, which keep their first
+          non-null value, because a rerun finds the transitions already made
+          and would report zero.
+        config:
+          loaded_at_field: recorded_at
+          freshness:
+            warn_after: { count: 26, period: hour }
