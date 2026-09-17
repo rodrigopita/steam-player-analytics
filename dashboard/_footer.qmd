@@ -1,0 +1,5 @@
+::: {.card fill="false"}
+Rendered `{python} f"{rendered_at:%Y-%m-%d %H:%M}"` UTC. Marts built through
+`{python} f"{built_through:%Y-%m-%d %H:00}"` UTC; the pipeline has observed hours through
+`{python} f"{observed_through:%Y-%m-%d %H:00}"` UTC.
+:::

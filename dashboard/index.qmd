@@ -9,9 +9,23 @@ format:
 
 ```{python}
 #| include: false
-from warehouse import q
+from datetime import UTC, datetime
+
 from charts import bars, diverging_bars, lines, ranked_bars, small_multiples, status_grid
 from IPython.display import HTML
+from warehouse import q
+
+fresh = q("""
+  select
+    (
+      select max(logical_hour) from marts.fct_snapshot_hours where has_observations
+    ) as observed_through,
+    (
+      select max(logical_hour) from marts.fct_player_counts
+    ) as built_through
+""")
+observed_through, built_through = fresh.observed_through[0], fresh.built_through[0]
+rendered_at = datetime.now(UTC)
 ```
 
 # Leaderboard
@@ -21,7 +35,7 @@ from IPython.display import HTML
 ```{python}
 #| content: valuebox
 #| title: "Games ranked"
-dict(value=int(q("select count(*) as n from marts.game_leaderboard").n[0]))
+{"value": int(q("select count(*) as n from marts.game_leaderboard").n[0])}
 ```
 
 ```{python}
@@ -32,7 +46,7 @@ players = q("""
   from marts.game_leaderboard
   where current_hour = (select max(current_hour) from marts.game_leaderboard)
 """).n[0]
-dict(icon="people", value=f"{int(players):,}")
+{"icon": "people", "value": f"{int(players):,}"}
 ```
 
 ```{python}
@@ -54,7 +68,7 @@ stale = int(q("""
   from marts.game_leaderboard
   where current_hour < (select max(current_hour) from marts.game_leaderboard)
 """).n[0])
-dict(icon="hourglass-split", value=stale, color="warning" if stale else "light")
+{"icon": "hourglass-split", "value": stale, "color": "warning" if stale else "light"}
 ```
 
 ## Row
@@ -98,6 +112,8 @@ HTML(
   + "</div>"
 )
 ```
+
+{{< include _footer.qmd >}}
 
 # Pipeline
 
@@ -184,6 +200,8 @@ lines(
   log_y=True,
 )
 ```
+
+{{< include _footer.qmd >}}
 
 # Trends
 
@@ -286,3 +304,5 @@ bars(
   unit="players",
 )
 ```
+
+{{< include _footer.qmd >}}
