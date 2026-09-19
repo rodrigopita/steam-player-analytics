@@ -48,7 +48,10 @@ To publish your own copy, `quarto publish gh-pages` from `dashboard/` renders ag
 
 ## Why this architecture
 
-![Airflow DAGs land Steam responses in S3, load a local Postgres raw schema, dbt builds staging and marts, a Quarto dashboard reads the marts and publishes to GitHub Pages](docs/architecture.svg)
+<picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
+    <img alt="Airflow DAGs land Steam responses in S3, load a local Postgres raw schema, dbt builds staging and marts, a Quarto dashboard reads the marts and publishes to GitHub Pages" src="docs/architecture-light.svg">
+</picture>
 
 - **Three DAGs.** Hourly snapshots and the daily catalog are different flows. A snapshot that fails is lost; a catalog day that fails is covered by the next run. Separate DAGs mean a slow metadata refresh cannot delay a snapshot, and each gets its own audit row. The third, `warehouse_bootstrap`, creates the raw schema once, by hand.
 - **Raw JSON in S3 before anything parses it.** Steam cannot be asked about the past, so the response body is the only irreplaceable thing in the system, and it is the one part that does not live on the laptop. Everything below it can be rebuilt from the bundles.
