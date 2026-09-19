@@ -45,3 +45,19 @@ You need Docker, the [Astro CLI](https://www.astronomer.io/docs/astro/cli/instal
    The dashboard footer tells you how fresh what you are looking at is.
 
 To publish your own copy, `quarto publish gh-pages` from `dashboard/` renders against your warehouse and pushes the site to a `gh-pages` branch of your fork.
+
+## Why this architecture
+
+![Airflow DAGs land Steam responses in S3, load a local Postgres raw schema, dbt builds staging and marts, a Quarto dashboard reads the marts and publishes to GitHub Pages](docs/architecture.svg)
+
+- **Three DAGs.** Hourly snapshots and the daily catalog are different flows. A snapshot that fails is lost; a catalog day that fails is covered by the next run. Separate DAGs mean a slow metadata refresh cannot delay a snapshot, and each gets its own audit row. The third, `warehouse_bootstrap`, creates the raw schema once, by hand.
+- **Raw JSON in S3 before anything parses it.** Steam cannot be asked about the past, so the response body is the only irreplaceable thing in the system, and it is the one part that does not live on the laptop. Everything below it can be rebuilt from the bundles.
+- **Append-only by policy.** The pipeline's IAM user can put, get and list; no statement grants delete. Bucket versioning keeps any overwritten version.
+- **Airflow writes `raw`, dbt writes everything else.** Loads use `ON CONFLICT DO NOTHING` on the natural key, so rerunning an hour inserts nothing. Staging views rename, deduplicate and derive; marts are tables.
+- **One business process.** Everything measured is a game's concurrent players at an hour. No second ingestion was added to make the schema look bigger.
+  - `fct_player_counts` is that fact at its native grain.
+  - `fct_player_counts_daily` re-grains it to the day as a dense snapshot: one row per game per day from the game's first day, with unobserved days kept as rows so a window function sees the gap instead of skipping it.
+  - `fct_player_trends_daily` adds day-over-day change, seven-day average and days since peak at that grain. They share a grain, so they are columns on one table and the dashboard does one join, not three.
+  - `fct_snapshot_hours` is not about games. It is the spine of hours the pipeline should have run, which is why it is a view and not a table.
+- **dbt in this repository.** The sources are coupled to what Airflow lands; a schema change is one commit touching both sides.
+- **The universe is a rule, not a list.** Every game that has appeared in Steam's most-played top 100 since 2026-08-26, plus a curated seed. Add, never remove; deactivate only on evidence stronger than a missing metadata call. When the chart shifted on 2026-09-16 the rule admitted 32 games in one night and refused the same six non-games it refuses every day.
