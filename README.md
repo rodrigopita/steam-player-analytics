@@ -64,3 +64,14 @@ To publish your own copy, `quarto publish gh-pages` from `dashboard/` renders ag
   - `fct_snapshot_hours` is not about games. It is the spine of hours the pipeline should have run, which is why it is a view and not a table.
 - **dbt in this repository.** The sources are coupled to what Airflow lands; a schema change is one commit touching both sides.
 - **The universe is a rule, not a list.** Every game that has appeared in Steam's most-played top 100 since 2026-08-26, plus a curated seed. Add, never remove; deactivate only on evidence stronger than a missing metadata call. When the chart shifted on 2026-09-16 the rule admitted 32 games in one night and refused the same six non-games it refuses every day.
+
+## Why these technologies
+
+- **Airflow 3 on the Astro CLI.** One command starts a local Airflow with its own metadata database, and a compose override adds the warehouse container next to it. Airflow 3.3.1, Astro Runtime 3.3-5. The image installs `requirements.txt`, so the uv environment is for tooling and never for a runtime dependency.
+- **S3 for the raw zone.** Its API is the one every tool speaks. It is the project's only cloud component, because the raw zone is the one part that has to outlive the laptop.
+- **PostgreSQL for the warehouse.** A relational system that runs in a container and shows its work: constraints, upserts, indexes, query plans. At 24 MB the dataset costs nothing to keep local. The models stay portable except where Postgres behavior is the point, such as `ON CONFLICT` on the loads and arrays in the audit tables. Postgres 16.
+- **dbt Core.** Twelve models, 43 tests, freshness declared on four raw tables. Staging as views, marts as tables. A decision about a column lives in that column's yaml description. dbt-core 1.12.
+- **Terraform, adopted late.** The bucket and the IAM user were built in the console on day one and imported three weeks later. The first plan changed one tag, `managed-by`; the second plan changed nothing. Terraform 1.16, AWS provider 6, local state because there is one operator.
+- **Quarto for the dashboard.** It renders a static page from the laptop warehouse and pushes it to GitHub Pages in one command. That is the whole requirement, no server and no database exposed to the internet. Charts are Plotly; SQL decides every number and Python only draws. Quarto 1.10, Plotly 7.
+- **uv and ruff.** uv pins Python 3.14 and the lockfile. ruff runs with its defaults, which grew in 0.16 and reshaped a few dict literals in the chart module.
+- **One rule behind the list.** No package until it pays for itself, and no helper for two same-shaped call sites until a third appears. What was weighed and turned down is in Alternatives considered and rejected.
