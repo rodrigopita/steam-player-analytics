@@ -133,3 +133,20 @@ In the order they would bite:
 - **The catalog's metadata pass.** 147 games through four slots is two minutes, measured. Steam's storefront allows roughly 200 calls per five minutes, so a thousand games is a 25-minute refresh at best. Slope measured, ceiling inferred.
 - **The app-list snapshot.** Twenty megabytes a day, forever, about 7 GB a year; 81% of the bucket today. Cheap to store and the only unbounded file, and it is parsed in worked memory every day. Measured.
 - **What does not break.** The hourly run barely moves with the universe, because 16 fetches run at once and each takes a third of a second; the run is scheduler overhead. Hourly bundles are 25 KB, the warehouse is 24 MB, and the published dashboard's size is the plotting library, not the data.
+
+## What would change in production
+
+Most of what changes is where things run, not what they are. The model, the tests, the audit rows and the universe rule carry over unchanged.
+
+- **Airflow off the laptop.** A managed deployment, Astronomer being the natural one for a project already on Astro. Every unrecorded hour so far has the same cause, a laptop that was off or asleep; a scheduler that is always on removes the largest failure mode by removing the laptop.
+- **Secrets out of `.env`.** Connections and the Steam key live in the deployment's secrets backend, and the pipeline identity becomes an IAM role instead of a user whose key sits in a Terraform state file.
+- **dbt orchestrated by Airflow.** A build after each hourly load, so the marts move with the pipeline and the two dates in the dashboard footer converge. Deliberately unscoped here so that the difference stays visible.
+- **Alerts on the hour statuses.** A ran-short or unrecorded hour pages someone within the hour instead of waiting for a query or a glance at the grid.
+- **Terraform state in a remote backend with locking.** This should be true the moment a second operator or a CI job applies.
+- **Storage lifecycle.** The daily app-list snapshots move to a colder tier after a month; the hourly bundles stay hot, because they are the irreplaceable part.
+- **A live dashboard instead of a static render.** With a warehouse reachable from the internet, the current Evidence line or a served Quarto replaces the local render, the publish command and the release dump.
+
+The warehouse itself forks two ways, determined by the data:
+
+- **RDS Postgres.** At 24 MB today and gigabytes at a thousand games for years, a managed Postgres keeps every model as it is, including the `ON CONFLICT` loads and the array columns, at a cost in the tens of dollars a month. This is the honest choice for the data this project has.
+- **A columnar warehouse.** Redshift, BigQuery, Snowflake or Databricks if the universe grows toward the whole Steam catalog or the fact table gains a second grain. The dbt models port with dialect changes; the loads change shape, from row upserts to bulk merges; and the design's one Postgres-specific habit, arrays in the audit tables, becomes a struct or a child table. The staging-views-over-raw problem from the previous section disappears, because scanning is what these engines do.
