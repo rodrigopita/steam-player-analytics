@@ -109,3 +109,27 @@ The trade-off taht shapes all three: Steam only reports the present. A rerun can
 - **A flag for games Steam never reports, and a canary for it.** `dim_game.is_unobservable` is true after 24 consecutive evidence hours in the unobservable list; a warning test flags any game in the latest hour's list that the flag has not caugh up with.
 - **Latency per call.** Median and maximum per hour in the audit row. Steam answers in about 340 ms; the worst seen is 87 seconds.
 - **The dashboard's pipeline page.** The hour grid, games observed per hour, latency on a log axis, and a footer on every page with the render time, the marts' last hour and the pipeline's last hour.
+
+## What breaks as volume grows
+
+Measured on 2026-09-17, with 147 games and 23 days of history.
+
+| Quantity                              | Value                                                                              |
+| ------------------------------------- | ---------------------------------------------------------------------------------- |
+| Hourly run, median and p90            | 37 s and 63 s over 224 audited runs                                                |
+| Hourly run at 106 games and at 147    | 36 s and 43 s                                                                      |
+| Airflow's concurrency                 | 16 tasks per DAG, 32 overall; `expand` refuses more than 1,024 items               |
+| One Steam call, median and worst seen | 338 ms and 87 s                                                                    |
+| Catalog refresh, a normal day         | about 2 minutes for 147 metadata calls through a 4-slot pool                       |
+| S3, total                             | 530 MB, of which 429 MB is the daily app-list snapshot and 9 MB the hourly bundles |
+| Warehouse                             | 24 MB, 52,000 fact rows                                                            |
+| `dbt build`, 55 nodes                 | 1.4 s                                                                              |
+
+In the order they would bite:
+
+- **The universe passes 1,024 games.** Airflow will not map a task over more items than `max_map_length`. A configuration ceiling, not a performance one, and the first hard stop. Not observed; read from the setting.
+- **Staging views re-read raw on every query.** Every mart query goes through views over the raw tables, and `fct_snapshot_hours` counts staging rows per hour each time the dashboard renders. Fine at 52,000 rows. A thousand games for a year is 8.7 million, and each render becomes a table scan. Inferred; the remedy is materialized or incremental staging, deliberately not built yet.
+- **Full-refresh marts.** `dbt build` rebuilds every table from scratch. 1.4 seconds today, minutes at millions of rows. Inferred; dbt's incremental models are the standard answer and are not needed at this size.
+- **The catalog's metadata pass.** 147 games through four slots is two minutes, measured. Steam's storefront allows roughly 200 calls per five minutes, so a thousand games is a 25-minute refresh at best. Slope measured, ceiling inferred.
+- **The app-list snapshot.** Twenty megabytes a day, forever, about 7 GB a year; 81% of the bucket today. Cheap to store and the only unbounded file, and it is parsed in worked memory every day. Measured.
+- **What does not break.** The hourly run barely moves with the universe, because 16 fetches run at once and each takes a third of a second; the run is scheduler overhead. Hourly bundles are 25 KB, the warehouse is 24 MB, and the published dashboard's size is the plotting library, not the data.
