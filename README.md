@@ -190,3 +190,20 @@ The warehouse itself forks two ways, determined by the data:
 
 - **Terraform import blocks in the repository.** They record how the existing bucket was adopted, and they fail for anyone whose account has nothing to import. The six commands live in the commit that did it.
 - **Remote Terraform state.** One operator, six resources, and a stranger would have to create a state bucket before Terraform could create the raw bucket.
+
+## Deferred
+
+Postponed, not rejected. Each waits for the condition that would make it pay.
+
+- **Airflow orchestrating dbt.** Unscoped on purpose through this checkpoint so that the gap between pipeline freshness and mart freshness stays visible in the dashboard footer. It is the first thing to add once the marts have a consumer that expects them current.
+- **Backfilling audit rows for the 291 hours before the audit existed.** The bundles are in S3 and the audit writer recomputes everything from durable artifacts, so clearing `load_raw_counts` with its downstream across the range would do it. Test on one run first.
+- **Catalog-day coverage.** Nothing notices a missing daily run; the 2026-09-10 refresh failed silently until a review found it. A daily spine like the hourly one is the shape.
+- **Incremental or materialized staging.** The staging views re-read raw on every mart query. Fine at 52,000 rows; the first thing to change past a few million.
+- **A warning test on recent ran-short hours**. That and the spec's row-count anomaly checks.
+- **The playtest policy.** Playtests are never store-listed, so none can enter the universe through the chart; `catalog_runs.skipped_chart_app_ids` records each refusal and the decision waits on taht column.
+- **A latency summary on the catalog audit row.** Appdetails latency goes to S3 only.
+- **Undocumented columns.** `dim_date` and the five staging views have table descriptions but no column ones; every mart column has one.
+- **Ruff scanning Astro's folder.** `.astro` is not in the exclude list, so a stray file there would be linted.
+- **Direct labels on the line charts.** The dataviz guidance wants them alongside the legend; plotly.js 4 drops text labels inside Quarto pages, so the legend and unified hover carry identity until that changes.
+- **A storage lifecycle for the app-list snapshots.** Twenty megabytes a day to a colder tier after a month, once the bucket's size is worth a policy.
+- **The `record_run` upsert, duplicated across the two audit writers.** The repository's rule waits for a third site before extracting a helper.
