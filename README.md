@@ -75,3 +75,37 @@ To publish your own copy, `quarto publish gh-pages` from `dashboard/` renders ag
 - **Quarto for the dashboard.** It renders a static page from the laptop warehouse and pushes it to GitHub Pages in one command. That is the whole requirement, no server and no database exposed to the internet. Charts are Plotly; SQL decides every number and Python only draws. Quarto 1.10, Plotly 7.
 - **uv and ruff.** uv pins Python 3.14 and the lockfile. ruff runs with its defaults, which grew in 0.16 and reshaped a few dict literals in the chart module.
 - **One rule behind the list.** No package until it pays for itself, and no helper for two same-shaped call sites until a third appears. What was weighed and turned down is in Alternatives considered and rejected.
+
+## How it fails, how quality is measured, how it watches itself
+
+The trade-off taht shapes all three: Steam only reports the present. A rerun can reload an hour; it cannot observe one that was missed. Uptime is part of the dataset's quality, and the pipeline is built to say so rather than hide it.
+
+### Failure modes
+
+- **A game delisted from sale vanished from the universe.** Rocket League left Steam's app list when it stopped being sold; the app-list gate excluded it silently. Seed games now bypass the gate; curation vouches for them, the chart needs evidence.
+- **A region-locked game was declared dead.** MahjongSoul had 14,000 players and no US storefront entry, so a missing metadata call deactivated it. Chart presence now outranks missing metadata: a game is deactivated only when it is off the chart and without metadata.
+- **One game with no public stats sank the whole hour.** Steam returns 404 for Deadlock. With the default trigger rule, one failed mapped task cancelled the bundle for the other 94 games. The 404 is now data, a row with status `unobservable`, and the bundle task runs on `all_done`.
+- **Manual test runs folded into scheduled hours.** The grain test failed on its first run: 36 violations from three cp1 hours where a manual run landed minutes after the tick. Staging keeps the observation closest to the hour; raw keeps every row.
+- **The laptop was off.** Nine hours on 2026-09-09, six on 2026-09-14, and more since; 21 unrecorded hours out of 623. Nothing can be done about them after the fact, and the hour grid on the dashboard shows each one.
+- **The run at restart fails.** With `catchup=False`, Airflow fires the latest missed interval as soon as it is back, before the warehouse container resolves. Five hours ran short this way, each an audit row with nothing behint it.
+- **Steam was unreachable for an hour.** On 2026-09-16 at 13:00 UTC every one of the 145 fetches failed and the bundle landed with empty lists. That hour broke Deadlock's 24-hour unobservable streak, the warning test fired at the next build, and the rule was tightened: an hour that observed nothing is not evidence about anything.
+- **A password change broke a run.** The warehouse password was rotated while Airflow was up; the 03:00 run failed until the restart. The old password was the word `warehouse`, which Airflow's secret masker redacted everywhere in the logs, including the module name.
+- **The chart moved.** On 2026-09-16 the universe rule admitted 32 games in one night. The gate that refuses non-games refused the same six it refuses daily.
+- **A deliberately killed load.** `load_raw_counts` was killed mid-run on 2026-09-10 13:00 and the run cleared twice: 105 rows and one audit row before and after, zero inserted on the rerun. The write-up is in [docs/2026-09-10-cp4-failure-demonstration.md](docs/2026-09-10-cp4-failure-demonstration.md).
+
+### Data quality
+
+- **43 dbt tests.** Non-negative counts, UTC timestamps, one observation per game per hour, accepted values for every status, and singular tests for the leaderboard's row contract and the hour spine's density. `dbt build` is green or nothing ships.
+- **Deduplication in staging, never in raw.** Raw is append-only in the warehouse too; a duplicate observation is resolved by a rule in a view not by a delete.
+- **Partial days are kept, with their hour count.** A day cut by an outage stays in the daily fact with `observed_hours` beside its average; the dashboard shows the count on hover. Dropping partial days erased a game that joined three days before an outage.
+- **A sanity check against SteamDB.** Same top ten, same top two; day-over-day direction agreed on 5 of 6 pairs; every daily peak within 3% below SteamDB's, never above, which is what hourly sampling should do.
+- **Freshness is declared on the raw tables.** Two hours for the hourly tables, 26 for the daily ones. Mart freshness is build freshness, and the dashboard footer says both.
+
+### Observability
+
+- **One audit row per run, per DAG.** `raw.snapshot_runs` and `raw.catalog_runs`, keyed on the run id. A cleared rerun refreshes its row, except the catalog's transition counts, which keep the first non-null value because a rerun finds the transitions already made.
+- **An hour spine that names every hour.** `fct_snapshot_hours` runs from the first observation to now and gives each hour a status: complete, ran short, unrecorded, or unaudited for the 291 hours before the audit existed. It is a view, so the answer is live.
+- **`unrecorded`, not `never_ran`.** The audit writer runs inside Airflow; when the warehouse is down it cannot write. No audit row and no facts means the warehouse heard nothing, and the status name claims no more than that.
+- **A flag for games Steam never reports, and a canary for it.** `dim_game.is_unobservable` is true after 24 consecutive evidence hours in the unobservable list; a warning test flags any game in the latest hour's list that the flag has not caugh up with.
+- **Latency per call.** Median and maximum per hour in the audit row. Steam answers in about 340 ms; the worst seen is 87 seconds.
+- **The dashboard's pipeline page.** The hour grid, games observed per hour, latency on a log axis, and a footer on every page with the render time, the marts' last hour and the pipeline's last hour.
