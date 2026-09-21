@@ -74,7 +74,7 @@ To publish your own copy, `quarto publish gh-pages` from `dashboard/` renders ag
 - **Terraform, adopted late.** The bucket and the IAM user were built in the console on day one and imported three weeks later. The first plan changed one tag, `managed-by`; the second plan changed nothing. Terraform 1.16, AWS provider 6, local state because there is one operator.
 - **Quarto for the dashboard.** It renders a static page from the laptop warehouse and pushes it to GitHub Pages in one command. That is the whole requirement, no server and no database exposed to the internet. Charts are Plotly; SQL decides every number and Python only draws. Quarto 1.10, Plotly 7.
 - **uv and ruff.** uv pins Python 3.14 and the lockfile. ruff runs with its defaults, which grew in 0.16 and reshaped a few dict literals in the chart module.
-- **One rule behind the list.** No package until it pays for itself, and no helper for two same-shaped call sites until a third appears. What was weighed and turned down is in Alternatives considered and rejected.
+- **One rule behind the list.** No package until it pays for itself, and no helper for two same-shaped call sites until a third appears. What was weighed and turned down is in [Alternatives considered and rejected](#alternatives-considered-and-rejected).
 
 ## How it fails, how quality is measured, how it watches itself
 
@@ -150,3 +150,43 @@ The warehouse itself forks two ways, determined by the data:
 
 - **RDS Postgres.** At 24 MB today and gigabytes at a thousand games for years, a managed Postgres keeps every model as it is, including the `ON CONFLICT` loads and the array columns, at a cost in the tens of dollars a month. This is the honest choice for the data this project has.
 - **A columnar warehouse.** Redshift, BigQuery, Snowflake or Databricks if the universe grows toward the whole Steam catalog or the fact table gains a second grain. The dbt models port with dialect changes; the loads change shape, from row upserts to bulk merges; and the design's one Postgres-specific habit, arrays in the audit tables, becomes a struct or a child table. The staging-views-over-raw problem from the previous section disappears, because scanning is what these engines do.
+
+## Alternatives considered and rejected
+
+### Storage and warehouse
+
+- **BigQuery as the warehouse.** Already familiar ground, and serverless rpicing hides the relational work this project is for. Postgres shows constraints, upserts and query plans, and the dataset is 24 MB.
+- **GCS for the raw zone.** A toss-up. Both stores are durable, both have an Airflow provider and a Terraform resource, and I have run both. S3 won the coin flip, and the design keeps the flip cheap: the storage-specific code is two calls to one hook in [include/object_store.py](include/object_store.py), and the append-only policy is two Terraform resources. Moving to GCS is that module and those resources; no DAG changes.
+- **MinIO as a local stand-in for S3.** Ruled out on day one. It reproduces the API and removes the only property the raw zone exists for, surviving the laptop.
+- **A cloud database to feed the dashboard.** The static render already publishes without one, and a stranger reading a hosted warehouse would be viewing the project, not running it. It is the right production shape, not the right onboarding shape.
+- **Committing the raw dump to git.** One megabyte per tag, forever, in every clone. It ships as a release asset next to the tag that describes it.
+
+### Pipeline
+
+- **One DAG for everything.** A slow metadata refresh could delay a snapshot that cannot be recovered; the two flows fail differently and audit differently.
+- **Redis for rate limiting.** Airflow's pool with four slots plus retries with backoff hold the storefront calls under Steam's limit; a distributed store would add state without adding signal.
+- **A market-price pipeline.** A second ingestion, a second model and a second set of API failures for a signal the player counts already carry.
+- **One shared audit table with a `dag_id` column.** The two DAGs share three of a dozen columns; a shared table would be mostly nulls and every query would start with a filter.
+- **A skipped task as the signal for "Steam publishes no count".** Skipped and failed mapped tasks both leave no XCom, so the bundle could not tell a permanent 404 from a real failure. The 404 became a row with a status.
+- **Reading task states from Airflow to build the audit row.** `RuntimeTaskInstance.get_task_states` exists and works; it would make the audit row depend on orchestration metadata instead of durable artifacts.
+- **`never_ran` as a status name.** The warehouse cannot distinguish a shceduler that never fired from a run that could not reach it. `unrecorded` claims only what is known.
+
+### Modeling
+
+- **A separate dbt repository.** The sources are coupled to what Airflow lands; one commit per schema change beats two repositories and a release dance.
+- **The daily rollup as a metric instead of a mart.** dbt's guide places time rollups in the metrics layer, which assumes the Semantic Layer re-grains at query time. Without it, in dbt Core with a plain Postgres dashboard, somebody has to materialize the daily grain, and the grain is in the table's name.
+- **Three trend marts.** Day-over-day change, seven-day average and days since peak share a grain, so one wide table serves the dashboard with one join.
+- **A Type 2 game dimension.** Versioned attributes would answer "what was the price when the spike happened". Worth having, not worth having first; `tracked_universe` is the frozen registry and `dim_game` the current view.
+
+### Dashboard
+
+- **Evidence.** The first choice, for SQL and Markdown under version control. Its static-site line is now legacy, frozen since February 2026 with its docs gone; the current line runs a server against a live database and its hosted tier costs 2,500 dollars a month.
+- **Metabase, Superset, Lightdash, Rill, Streamlit.** Each is a running service, and the published page would need a database reachable from the internet. Streamlit also moves chart logic into Python next to dbt's SQL.
+- **Power BI, Tableau, Looker.** Desktop or SaaS tools built for analysts on a company warehouse. The stranger would install proprietary software and open a binary that no diff can show.
+- **Hand-rolled HTML.** Legacy Evidence rebuilt by hand: an export step, a chart library, layout and theming, all maintained here. Quarto supplies them for free.
+- **Green for a complete hour.** Red against green fails the colorblind check for deutan vision at every share tried, and the pastel variants merge into the gray for unaudited hours. Complete is the dashboard's ordinary blue; the status colors mark departures from normal only.
+
+### Infrastructure
+
+- **Terraform import blocks in the repository.** They record how the existing bucket was adopted, and they fail for anyone whose account has nothing to import. The six commands live in the commit that did it.
+- **Remote Terraform state.** One operator, six resources, and a stranger would have to create a state bucket before Terraform could create the raw bucket.
