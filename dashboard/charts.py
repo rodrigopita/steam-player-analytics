@@ -63,7 +63,8 @@ pio.templates["steam"] = go.layout.Template(
             "entrywidth": 110,
             "entrywidthmode": "pixels",
         },
-    }
+    },
+    data={"bar": [go.Bar(marker={"cornerradius": 4, "line": {"width": 0}})]},
 )
 pio.templates.default = "steam"
 
@@ -98,8 +99,6 @@ def ranked_bars(df: pd.DataFrame, value: str, label: str) -> go.Figure:
     fig = px.bar(df, x=value, y=label, orientation="h")
     fig.update_traces(
         marker_color=SEQUENTIAL,
-        marker_cornerradius=4,
-        marker_line_width=0,
         hovertemplate="%{y}<br>%{x:,} players<extra></extra>",
     )
     fig.add_trace(
@@ -310,8 +309,6 @@ def diverging_bars(df: pd.DataFrame, value: str, label: str) -> go.Figure:
             y=df[label],
             orientation="h",
             marker_color=colors,
-            marker_cornerradius=4,
-            marker_line_width=0,
             hovertemplate="%{y}<br>%{x:+.1%} from the previous day<extra></extra>",
         )
     )
@@ -352,8 +349,6 @@ def bars(df: pd.DataFrame, x: str, y: str, unit: str) -> go.Figure:
             x=df[x],
             y=df[y],
             marker_color=SEQUENTIAL,
-            marker_cornerradius=4,
-            marker_line_width=0,
             hovertemplate="%{x}:00 UTC<br>%{y:,.0f} " + unit + "<extra></extra>",
         )
     )
