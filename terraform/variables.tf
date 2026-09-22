@@ -9,7 +9,7 @@ variable "owner" {
 }
 
 variable "region" {
-  description = "Bucekt region. Same value as region_name in the AWS connection."
+  description = "Bucket region. Same value as region_name in the AWS connection."
   type        = string
   default     = "us-east-1"
 }

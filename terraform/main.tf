@@ -23,7 +23,7 @@ resource "aws_s3_bucket_public_access_block" "raw" {
 
 # The pipeline identity. Append-only by policy, not by good intentions: it can
 # put, get and list, and no statement grants delete. With versioning on, even
-# an overwrite adds a version rather than removing one. Removing hisotry takes
+# an overwrite adds a version rather than removing one. Removing history takes
 # the account owner.
 resource "aws_iam_user" "airflow" {
   name = "steam-analytics-airflow"
