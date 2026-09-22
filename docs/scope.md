@@ -126,6 +126,8 @@ Track:
 
 5. **Stranger can run it** (`cp5-release`). Dashboard published, README answering the eight questions, diagram in place. Done when someone other than me clones the repo and reaches the dashboard following only the README.
 
+   Revised 2026-09-22: the stranger test was dropped to keep the project moving. The checkpoint closes on teh published dashboard, the README and the diagram, with the quickstart verified by an independent review of every command, path, variable and DAG id against the tree rather than by a stranger.
+
 ## Stretch ideas
 
 Additional Steam endpoints, Redis, or a second fact table may be explored only after the core project is complete. They are not part of the completion criteria.
