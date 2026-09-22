@@ -10,6 +10,7 @@ recent AS (
     SELECT *
     FROM runs
     WHERE unobservable_app_ids IS NOT NULL
+        AND observed_count > 0
     ORDER BY logical_hour DESC LIMIT 1
 ),
 
