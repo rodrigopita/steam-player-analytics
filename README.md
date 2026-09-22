@@ -31,7 +31,7 @@ You need Docker, the [Astro CLI](https://www.astronomer.io/docs/astro/cli/instal
    astro dev start
    ```
    Airflow is at http://localhost:8080, login `admin` / `admin`. The warehouse is Postgres on `localhost:5433`.
-5. Bootstrap and fill the universe. In the Airflow UI, trigger `warehouse_bootstrap` once; it creates the `raw` schema. Then unpause and trigger `steam_catalog_refresh`; it builds the tracked universe and fetches metadata, about two minutes. Finally unpause `steam_player_snapshots_hourly`. It runs at every top of the hour; trigger it once if you do not want to wait.
+5. Bootstrap and fill the universe. In the Airflow UI, unpause and trigger `warehouse_bootstrap` once; it creates the `raw` schema. Then unpause and trigger `steam_catalog_refresh`; it builds the tracked universe and fetches metadata, about two minutes. Finally unpause `steam_player_snapshots_hourly`. It runs at every top of the hour; trigger it once if you do not want to wait. (DAGs start paused; a run triggered on a paused DAG does not execute.)
 6. Optional: start with three weeks of history. Your instance begins empty. The latest [release](https://github.com/rodrigopita/steam-player-analytics/releases) carries a dump of the raw schema; restoring it is idempotent, so running it twice changes nothing.
    ```bash
    gunzip -c raw-YYYY-MM-DD.sql.gz | PGPASSWORD=steamdw-local psql -h localhost -p 5433 -U warehouse -d steam -v ON_ERROR_STOP=1 -q
@@ -63,7 +63,7 @@ To publish your own copy, `quarto publish gh-pages` from `dashboard/` renders ag
   - `fct_player_trends_daily` adds day-over-day change, seven-day average and days since peak at that grain. They share a grain, so they are columns on one table and the dashboard does one join, not three.
   - `fct_snapshot_hours` is not about games. It is the spine of hours the pipeline should have run, which is why it is a view and not a table.
 - **dbt in this repository.** The sources are coupled to what Airflow lands; a schema change is one commit touching both sides.
-- **The universe is a rule, not a list.** Every game that has appeared in Steam's most-played top 100 since 2026-08-26, plus a curated seed. Add, never remove; deactivate only on evidence stronger than a missing metadata call. When the chart shifted on 2026-09-16 the rule admitted 32 games in one night and refused the same six non-games it refuses every day.
+- **The universe is a rule, not a list.** Every game that has appeared in Steam's most-played top 100 since 2026-08-26, plus a curated seed. Add, never remove; deactivate only on evidence stronger than a missing metadata call. When the chart shifted on 2026-09-16 the rule admitted 32 games in one night and refused the same handful of non-games it refuses every day.
 
 ## Why these technologies
 
@@ -78,7 +78,7 @@ To publish your own copy, `quarto publish gh-pages` from `dashboard/` renders ag
 
 ## How it fails, how quality is measured, how it watches itself
 
-The trade-off taht shapes all three: Steam only reports the present. A rerun can reload an hour; it cannot observe one that was missed. Uptime is part of the dataset's quality, and the pipeline is built to say so rather than hide it.
+The trade-off that shapes all three: Steam only reports the present. A rerun can reload an hour; it cannot observe one that was missed. Uptime is part of the dataset's quality, and the pipeline is built to say so rather than hide it.
 
 ### Failure modes
 
@@ -86,11 +86,11 @@ The trade-off taht shapes all three: Steam only reports the present. A rerun can
 - **A region-locked game was declared dead.** MahjongSoul had 14,000 players and no US storefront entry, so a missing metadata call deactivated it. Chart presence now outranks missing metadata: a game is deactivated only when it is off the chart and without metadata.
 - **One game with no public stats sank the whole hour.** Steam returns 404 for Deadlock. With the default trigger rule, one failed mapped task cancelled the bundle for the other 94 games. The 404 is now data, a row with status `unobservable`, and the bundle task runs on `all_done`.
 - **Manual test runs folded into scheduled hours.** The grain test failed on its first run: 36 violations from three cp1 hours where a manual run landed minutes after the tick. Staging keeps the observation closest to the hour; raw keeps every row.
-- **The laptop was off.** Nine hours on 2026-09-09, six on 2026-09-14, and more since; 21 unrecorded hours out of 623. Nothing can be done about them after the fact, and the hour grid on the dashboard shows each one.
-- **The run at restart fails.** With `catchup=False`, Airflow fires the latest missed interval as soon as it is back, before the warehouse container resolves. Five hours ran short this way, each an audit row with nothing behint it.
-- **Steam was unreachable for an hour.** On 2026-09-16 at 13:00 UTC every one of the 145 fetches failed and the bundle landed with empty lists. That hour broke Deadlock's 24-hour unobservable streak, the warning test fired at the next build, and the rule was tightened: an hour that observed nothing is not evidence about anything.
+- **The laptop was off.** Nine hours lost on 2026-09-09, six on 2026-09-14, and more since; 22 unrecorded hours out of 623. Nothing can be done about them after the fact, and the hour grid on the dashboard shows each one.
+- **The run at restart fails.** With `catchup=False`, Airflow fires the latest missed interval as soon as it is back, before the warehouse container resolves. Five hours ran short this way, each an audit row with nothing behind it.
+- **Steam was unreachable for an hour.** On 2026-09-16 at 13:00 UTC every one of the 146 fetches failed and the bundle landed with empty lists. That hour broke Deadlock's 24-hour unobservable streak, the warning test fired at the next build, and the rule was tightened: an hour that observed nothing is not evidence about anything.
 - **A password change broke a run.** The warehouse password was rotated while Airflow was up; the 03:00 run failed until the restart. The old password was the word `warehouse`, which Airflow's secret masker redacted everywhere in the logs, including the module name.
-- **The chart moved.** On 2026-09-16 the universe rule admitted 32 games in one night. The gate that refuses non-games refused the same six it refuses daily.
+- **The chart moved.** On 2026-09-16 the universe rule admitted 32 games in one night. The gate that refuses non-games refused the same handful of non-games it refuses daily.
 - **A deliberately killed load.** `load_raw_counts` was killed mid-run on 2026-09-10 13:00 and the run cleared twice: 105 rows and one audit row before and after, zero inserted on the rerun. The write-up is in [docs/2026-09-10-cp4-failure-demonstration.md](docs/2026-09-10-cp4-failure-demonstration.md).
 
 ### Data quality
@@ -106,7 +106,7 @@ The trade-off taht shapes all three: Steam only reports the present. A rerun can
 - **One audit row per run, per DAG.** `raw.snapshot_runs` and `raw.catalog_runs`, keyed on the run id. A cleared rerun refreshes its row, except the catalog's transition counts, which keep the first non-null value because a rerun finds the transitions already made.
 - **An hour spine that names every hour.** `fct_snapshot_hours` runs from the first observation to now and gives each hour a status: complete, ran short, unrecorded, or unaudited for the 291 hours before the audit existed. It is a view, so the answer is live.
 - **`unrecorded`, not `never_ran`.** The audit writer runs inside Airflow; when the warehouse is down it cannot write. No audit row and no facts means the warehouse heard nothing, and the status name claims no more than that.
-- **A flag for games Steam never reports, and a canary for it.** `dim_game.is_unobservable` is true after 24 consecutive evidence hours in the unobservable list; a warning test flags any game in the latest hour's list that the flag has not caugh up with.
+- **A flag for games Steam never reports, and a canary for it.** `dim_game.is_unobservable` is true after 24 consecutive evidence hours in the unobservable list; a warning test flags any game in the latest hour's list that the flag has not caught up with.
 - **Latency per call.** Median and maximum per hour in the audit row. Steam answers in about 340 ms; the worst seen is 87 seconds.
 - **The dashboard's pipeline page.** The hour grid, games observed per hour, latency on a log axis, and a footer on every page with the render time, the marts' last hour and the pipeline's last hour.
 
@@ -122,7 +122,7 @@ Measured on 2026-09-17, with 147 games and 23 days of history.
 | One Steam call, median and worst seen | 338 ms and 87 s                                                                    |
 | Catalog refresh, a normal day         | about 2 minutes for 147 metadata calls through a 4-slot pool                       |
 | S3, total                             | 530 MB, of which 429 MB is the daily app-list snapshot and 9 MB the hourly bundles |
-| Warehouse                             | 24 MB, 52,000 fact rows                                                            |
+| Warehouse                             | 24 MB, 51,000 rows in the hourly fact                                              |
 | `dbt build`, 55 nodes                 | 1.4 s                                                                              |
 
 In the order they would bite:
@@ -155,7 +155,7 @@ The warehouse itself forks two ways, determined by the data:
 
 ### Storage and warehouse
 
-- **BigQuery as the warehouse.** Already familiar ground, and serverless rpicing hides the relational work this project is for. Postgres shows constraints, upserts and query plans, and the dataset is 24 MB.
+- **BigQuery as the warehouse.** Already familiar ground, and serverless pricing hides the relational work this project is for. Postgres shows constraints, upserts and query plans, and the dataset is 24 MB.
 - **GCS for the raw zone.** A toss-up. Both stores are durable, both have an Airflow provider and a Terraform resource, and I have run both. S3 won the coin flip, and the design keeps the flip cheap: the storage-specific code is two calls to one hook in [include/object_store.py](include/object_store.py), and the append-only policy is two Terraform resources. Moving to GCS is that module and those resources; no DAG changes.
 - **MinIO as a local stand-in for S3.** Ruled out on day one. It reproduces the API and removes the only property the raw zone exists for, surviving the laptop.
 - **A cloud database to feed the dashboard.** The static render already publishes without one, and a stranger reading a hosted warehouse would be viewing the project, not running it. It is the right production shape, not the right onboarding shape.
@@ -169,7 +169,7 @@ The warehouse itself forks two ways, determined by the data:
 - **One shared audit table with a `dag_id` column.** The two DAGs share three of a dozen columns; a shared table would be mostly nulls and every query would start with a filter.
 - **A skipped task as the signal for "Steam publishes no count".** Skipped and failed mapped tasks both leave no XCom, so the bundle could not tell a permanent 404 from a real failure. The 404 became a row with a status.
 - **Reading task states from Airflow to build the audit row.** `RuntimeTaskInstance.get_task_states` exists and works; it would make the audit row depend on orchestration metadata instead of durable artifacts.
-- **`never_ran` as a status name.** The warehouse cannot distinguish a shceduler that never fired from a run that could not reach it. `unrecorded` claims only what is known.
+- **`never_ran` as a status name.** The warehouse cannot distinguish a scheduler that never fired from a run that could not reach it. `unrecorded` claims only what is known.
 
 ### Modeling
 
@@ -200,7 +200,7 @@ Postponed, not rejected. Each waits for the condition that would make it pay.
 - **Catalog-day coverage.** Nothing notices a missing daily run; the 2026-09-10 refresh failed silently until a review found it. A daily spine like the hourly one is the shape.
 - **Incremental or materialized staging.** The staging views re-read raw on every mart query. Fine at 52,000 rows; the first thing to change past a few million.
 - **A warning test on recent ran-short hours**. That and the spec's row-count anomaly checks.
-- **The playtest policy.** Playtests are never store-listed, so none can enter the universe through the chart; `catalog_runs.skipped_chart_app_ids` records each refusal and the decision waits on taht column.
+- **The playtest policy.** Playtests are never store-listed, so none can enter the universe through the chart; `catalog_runs.skipped_chart_app_ids` records each refusal and the decision waits on that column.
 - **A latency summary on the catalog audit row.** Appdetails latency goes to S3 only.
 - **Undocumented columns.** `dim_date` and the five staging views have table descriptions but no column ones; every mart column has one.
 - **Ruff scanning Astro's folder.** `.astro` is not in the exclude list, so a stray file there would be linted.
